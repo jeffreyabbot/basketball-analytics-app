@@ -16,7 +16,7 @@ def parse_coordinate(val):
 
 def get_color_from_scale(val, min_val, max_val, scale_name="Viridis"):
     """
-    Returns an rgba string for a value mapped to a named Plotly scale with 0.4 opacity.
+    Returns an rgba string for a value mapped to a named Plotly scale with 0.45 opacity.
     """
     if max_val == min_val:
         percent = 0.5
@@ -38,7 +38,7 @@ def get_color_from_scale(val, min_val, max_val, scale_name="Viridis"):
     g = int(c_low[1] + (c_high[1] - c_low[1]) * weight)
     b = int(c_low[2] + (c_high[2] - c_low[2]) * weight)
     
-    return f"rgba({r},{g},{b},0.45)" # 0.45 opacity per al fons
+    return f"rgba({r},{g},{b},0.45)"
 
 def get_zone_stats(pbp_df, selected_player=None):
     """Calculates shot counts and average points per shot (PPS) per zone."""
@@ -86,9 +86,8 @@ def get_zone_stats(pbp_df, selected_player=None):
 
 def draw_colorblind_shot_charts(pbp_df, selected_player=None):
     """
-    Renders two shot charts on a side-facing FIBA half-court.
-    Fills background zones with transparent colors based on stats (Volume or PPS),
-    and plots individual shots on top as discrete Encistat/Errat points.
+    Renders two side-by-side shot charts on a side-facing FIBA half-court.
+    Fills background zones programmatically to prevent any visual gaps.
     """
     df, stats_dict = get_zone_stats(pbp_df, selected_player)
     
@@ -96,13 +95,13 @@ def draw_colorblind_shot_charts(pbp_df, selected_player=None):
     
     if df.empty:
         fig_vol = go.Figure()
-        fig_vol.add_annotation(text="No s'han trobat coordenades de tir per a aquesta selecció", showarrow=False)
+        fig_vol.add_annotation(text="No s'han trobat coordenades de tir per a aquesta selecció", showarrow=False, font=dict(size=14))
         fig_vol.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), height=400)
         return fig_vol, fig_vol
 
-    # Programmatic FIBA side-court coordinates
+    # Programmatic FIBA side-court arc points (R=22.15, hoop centered lateral at Y=25)
     theta_limit = np.arcsin(22.0 / 22.15)
-    arc_angles = np.linspace(-theta_limit, theta_limit, 50)
+    arc_angles = np.linspace(-theta_limit, theta_limit, 100)
     arc_x = 5.25 + 22.15 * np.cos(arc_angles)
     arc_y = 25.0 + 22.15 * np.sin(arc_angles)
     
@@ -114,21 +113,22 @@ def draw_colorblind_shot_charts(pbp_df, selected_player=None):
     ft_x = 19.0 + 6.0 * np.cos(ft_angles)
     ft_y = 25.0 + 6.0 * np.sin(ft_angles)
 
-    # 1. Extract min/max boundaries for coloring scales
     volumes = [stats_dict.get(z, {}).get("Attempts", 0) for z in stats_dict]
     pps_values = [stats_dict.get(z, {}).get("PPS", 0.0) for z in stats_dict]
     
     min_vol, max_vol = min(volumes or [0]), max(volumes or [1])
     min_pps, max_pps = min(pps_values or [0.0]), max(pps_values or [1.0])
 
-    # Define the 5 FIBA zone polygon boundaries
+    # Dynamic filled polygons extending slightly beyond [0, 50] to contain minor tracking offsets
     zone_polygons = {
         "Corner 3": [
-            {"x": [0, 14, 14, 0, 0], "y": [0, 0, 3, 3, 0]},      # Bottom Corner 3
-            {"x": [0, 14, 14, 0, 0], "y": [47, 47, 50, 50, 47]} # Top Corner 3
+            {"x": [0, 14, 14, 0, 0], "y": [-3, -3, 3, 3, -3]},      # Bottom Corner (Y estès a -3)
+            {"x": [0, 14, 14, 0, 0], "y": [47, 47, 53, 53, 47]}     # Top Corner (Y estès a 53)
         ],
         "Above the Break 3": [
-            {"x": [14, 47, 47, 14] + list(arc_x[::-1]) + [14], "y": [0, 0, 50, 50] + list(arc_y[::-1]) + [0]}
+            # Closed polygon covering the entire 3pt space with no gaps
+            {"x": [0, 0, 47, 47, 0, 0] + list(arc_x[::-1]) + [0], 
+             "y": [3, -3, -3, 53, 53, 47] + list(arc_y[::-1]) + [3]}
         ],
         "Mid-Range": [
             {"x": [0] + list(arc_x) + [0, 0], "y": [3] + list(arc_y) + [47, 3]}
@@ -142,10 +142,10 @@ def draw_colorblind_shot_charts(pbp_df, selected_player=None):
     }
 
     figs = []
-    for metric_name, min_v, max_v, scale in [("Attempts", min_vol, max_vol, "Viridis"), ("PPS", min_pps, max_pps, "Civid")]:
+    for metric_name, min_v, max_v, scale in [("Attempts", min_vol, max_vol, "Viridis"), ("PPS", min_pps, max_pps, "Cividis")]:
         fig = go.Figure()
         
-        # Draw Filled Zone Polygons first (Choropleth Background)
+        # 1. Draw Filled Background Polygons
         for zone_name, polys in zone_polygons.items():
             val = stats_dict.get(zone_name, {}).get(metric_name, 0.0)
             color_str = get_color_from_scale(val, min_v, max_v, scale)
@@ -156,14 +156,14 @@ def draw_colorblind_shot_charts(pbp_df, selected_player=None):
                     y=poly["y"],
                     fill="toself",
                     fillcolor=color_str,
-                    line=dict(color="rgba(0,0,0,0)"), # No border for clean color segments
+                    line=dict(color="rgba(0,0,0,0)"),
                     mode="lines",
                     hoverinfo="text",
                     text=f"Zona: {zone_name}<br>Intents: {stats_dict.get(zone_name, {}).get('Attempts', 0)}<br>PPS: {stats_dict.get(zone_name, {}).get('PPS', 0.0):.2f}",
                     showlegend=False
                 ))
 
-        # Draw Gray Court Boundaries and Lines on top of colors
+        # 2. Draw Official FIBA Court Lines (Exactly at Y=0 and Y=50)
         court_lines = [
             go.Scatter(x=[0, 47, 47, 0, 0], y=[0, 0, 50, 50, 0], mode="lines", line=dict(color="darkgray", width=1.5), showlegend=False),
             go.Scatter(x=[0, 19, 19, 0], y=[17, 17, 33, 33], mode="lines", line=dict(color="darkgray", width=1.5), showlegend=False),
@@ -175,10 +175,10 @@ def draw_colorblind_shot_charts(pbp_df, selected_player=None):
         for line in court_lines:
             fig.add_trace(line)
 
-        # Plot Individual Shots on top of everything (Encistats vs Errats)
-        df["IsMade"] = df["Play_Result"].apply(lambda r: "Encistat" if "Missed" not in str(r) else "Errat")
+        # 3. Plot Individual Shots (Encistellats vs Errats)
+        df["IsMade"] = df["Play_Result"].apply(lambda r: "Encistellats" if "Missed" not in str(r) else "Errats")
         
-        for result, color, symbol, name in [("Encistat", "#2ca02c", "circle", "Encistat"), ("Errat", "#d62728", "x", "Errat")]:
+        for result, color, symbol in [("Encistellats", "#2ca02c", "circle"), ("Errats", "#d62728", "x")]:
             sub_df = df[df["IsMade"] == result]
             fig.add_trace(go.Scatter(
                 x=sub_df["Parsed_X"],
@@ -190,13 +190,35 @@ def draw_colorblind_shot_charts(pbp_df, selected_player=None):
                 text=sub_df["text"]
             ))
 
+        # 4. Hidden Dummy Trace to Force a Colored scale Legend on the Right Side
+        fig.add_trace(go.Scatter(
+            x=[None],
+            y=[None],
+            mode="markers",
+            marker=dict(
+                colorscale=scale,
+                cmin=min_v,
+                cmax=max_v,
+                showscale=True,
+                colorbar=dict(
+                    title="Punts per Tir" if metric_name == "PPS" else "Intents de Tir",
+                    thickness=15,
+                    x=1.02,
+                    y=0.5,
+                    ypad=10,
+                    titleside="top"
+                )
+            ),
+            showlegend=False
+        ))
+
         # Visual layout settings
         title_prefix = "Volum de Tirs" if metric_name == "Attempts" else "Eficiència de Tir (PPS)"
         fig.update_layout(
             title=f"{title_prefix} - {st_player_label}",
             xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-2, 49]),
-            # Marges de banda eixamplats a [-2, 52] per contenir tots els tirs
-            yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-2, 52], scaleanchor="x", scaleratio=1),
+            # Range de visualització tancat per evitar deformacions en pantalles amples
+            yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-3, 53], scaleanchor="x", scaleratio=1),
             plot_bgcolor="white",
             height=500,
             margin=dict(l=20, r=20, t=40, b=20),
