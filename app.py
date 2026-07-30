@@ -12,9 +12,8 @@ from utils.data_loader import (
     parse_aggregate,
     resolve_path_case_insensitive,
     get_total_team_minutes,
-    round_to_plausible_game_time,
+    estimate_game_duration,
     find_best_matching_pbp,
-    normalize_and_format_player_times,
     parse_time_to_minutes
 )
 from utils.court_visualizer import draw_colorblind_shot_charts
@@ -99,21 +98,17 @@ if view == "Game Analyzer":
             # Parse data
             team_summary, (t1_name, t1_players), (t2_name, t2_players) = parse_boxscore(selected_game["path"])
             
-            # Calculate total summed times and normalize/scale standard regulation/OT player minutes
-            t1_mins = get_total_team_minutes(t1_players)
-            t2_mins = get_total_team_minutes(t2_players)
-            game_total_mins = max(t1_mins, t2_mins)
-            rounded_game_mins = round_to_plausible_game_time(game_total_mins)
-            
-            # Perform player minute normalization (makes player sum perfectly match 160, 180, 200, 225, etc.)
-            t1_players = normalize_and_format_player_times(t1_players, rounded_game_mins)
-            t2_players = normalize_and_format_player_times(t2_players, rounded_game_mins)
-            
             # Robust team name overlay matching for PBP sheets
             pbp_path = find_best_matching_pbp(t1_name, t2_name, PBP_DIR, selected_game["filename"])
             has_pbp = pbp_path is not None and os.path.exists(pbp_path)
+            
+            pbp_df_param = None
             if has_pbp:
                 pbp_df, shot_zone_df, lineups_df = parse_pbp(pbp_path)
+                pbp_df_param = pbp_df
+            
+            # Calculate standard regulation/OT game duration (player times are left unscaled/pristine)
+            estimated_game_mins = estimate_game_duration(t1_players, t2_players, pbp_df_param)
             
             # --- Subsection 1: Advanced Metrics (OER/DER/PACE) ---
             st.subheader("Team Efficiency Ratings")
@@ -130,9 +125,9 @@ if view == "Game Analyzer":
                 st.metric(label=f"{t2_name} OER / DER", value=f"{t2_stats['OERcal']:.1f} / {t2_stats['DERcal']:.1f}")
             with col4:
                 st.metric(
-                    label="Rounded Game Time", 
-                    value=f"{rounded_game_mins // 5} mins", 
-                    help=f"Raw summed player minutes: {game_total_mins:.1f} rounded to closest standard {rounded_game_mins} total player minutes."
+                    label="Game Duration", 
+                    value=f"{estimated_game_mins} mins", 
+                    help=f"Standard duration of the game (Regulation or Overtime)."
                 )
                 
             # --- Subsection 2: Four Factors Comparison ---

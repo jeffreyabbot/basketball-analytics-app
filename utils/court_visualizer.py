@@ -66,7 +66,7 @@ def get_zone_stats(pbp_df, selected_player=None):
 
 def draw_colorblind_shot_charts(pbp_df, selected_player=None):
     """
-    Renders two side-by-side shot charts on a side-facing FIBA half-court.
+    Renders two side-by-side shot charts on a side-facing FIBA half-court with completed lines.
     1. Volume Chart (Attempts in Zone)
     2. PPS Chart (Points Per Shot in Zone)
     """
@@ -104,7 +104,7 @@ def draw_colorblind_shot_charts(pbp_df, selected_player=None):
     
     # Draw standard side-facing half-court lines on both figures
     for fig in [fig_vol, fig_pps]:
-        # Baseline & Halfcourt boundaries
+        # Baseline & Halfcourt boundaries (X: 0 to 47, Y: 0 to 50)
         fig.add_shape(type="rect", x0=0, y0=0, x1=47, y1=50, line=dict(color="lightgray", width=1.5))
         
         # Restricted Key/Paint Area (standard 19ft length x 16ft width centered at Y=25)
@@ -119,7 +119,11 @@ def draw_colorblind_shot_charts(pbp_df, selected_player=None):
         # Hoop/Rim (radius 0.75ft centered at X=5.25, Y=25)
         fig.add_shape(type="circle", x0=4.5, y0=24.25, x1=6.0, y1=25.75, line=dict(color="lightgray", width=2))
         
-        # 3-Point Arc (radius 22.15ft centered at Hoop X=5.25, Y=25)
+        # Corner 3 straight lines (extending from baseline X=0 to X=14 at Y=3 and Y=47)
+        fig.add_shape(type="line", x0=0, y0=3, x1=14, y1=3, line=dict(color="lightgray", width=1.5))
+        fig.add_shape(type="line", x0=0, y0=47, x1=14, y1=47, line=dict(color="lightgray", width=1.5))
+        
+        # 3-Point Arc curve (radius 22.15ft centered at Hoop X=5.25, Y=25)
         fig.add_shape(type="circle", x0=-16.9, y0=2.85, x1=27.4, y1=47.15, line=dict(color="lightgray", width=1.5))
         
         # Lock visual scales and ranges

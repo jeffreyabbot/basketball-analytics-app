@@ -101,6 +101,10 @@ def parse_boxscore(file_path):
     t2_name = str(full_sheet.iloc[jugador_rows[1] - 1, 0]).strip()
     t2_players = pd.read_excel(file_path, skiprows=jugador_rows[1]).dropna(subset=["JUGADOR"]).copy()
     
+    # Strip any potential leading/trailing whitespace inside column names
+    t1_players.columns = t1_players.columns.str.strip()
+    t2_players.columns = t2_players.columns.str.strip()
+    
     # Clean and format player TIME columns uniformly
     t1_players["TIME"] = t1_players["TIME"].apply(format_time_cleanly)
     t2_players["TIME"] = t2_players["TIME"].apply(format_time_cleanly)
@@ -154,7 +158,6 @@ def parse_time_to_minutes(val):
         
     # 2. Handle Python datetime.datetime objects (Excel parses MM:SS as HH:MM:00)
     if isinstance(val, datetime.datetime):
-        # We parse the hour component as minutes and the minute component as seconds
         return val.hour + val.minute / 60.0 + val.second / 3600.0
         
     val_str = str(val).strip()
@@ -224,26 +227,43 @@ def round_to_plausible_game_time(total_minutes):
     plausible_times = [150, 160, 180, 200, 225, 250, 275, 300]
     return min(plausible_times, key=lambda x: abs(x - total_minutes))
 
-def normalize_and_format_player_times(players_df, target_minutes):
+def estimate_game_duration(players_df1, players_df2, pbp_df=None):
     """
-    Scales and normalizes individual player times proportionally so their 
-    sum perfectly equals standard target game minutes (e.g. 200 or 225).
+    Estimates the standard game duration (e.g., 32, 40, 45, 50 mins) based on:
+    1. Maximum period (quarter) in PBP file (if available).
+    2. Sum of player minutes from boxscores (as fallback).
     """
-    if "TIME" not in players_df.columns or players_df.empty:
-        return players_df
-        
-    raw_minutes = players_df["TIME"].apply(parse_time_to_minutes)
-    total_raw = raw_minutes.sum()
+    # 1. Best: Use PBP quarters if available (accurate and robust)
+    if pbp_df is not None and not pbp_df.empty and "quarter" in pbp_df.columns:
+        max_quarter = pbp_df["quarter"].max()
+        if max_quarter <= 4:
+            # Check if total player minutes are low, indicating youth 32m league
+            t1_mins = get_total_team_minutes(players_df1)
+            t2_mins = get_total_team_minutes(players_df2)
+            max_mins = max(t1_mins, t2_mins)
+            if max_mins < 180 and max_mins > 0:
+                return 32  # 32m cadet game
+            return 40  # Standard 40 minutes regulation
+        else:
+            # Each OT adds 5 minutes
+            ot_periods = max_quarter - 4
+            return 40 + ot_periods * 5
+            
+    # 2. Fallback: Use summed team minutes
+    t1_mins = get_total_team_minutes(players_df1)
+    t2_mins = get_total_team_minutes(players_df2)
+    max_mins = max(t1_mins, t2_mins)
     
-    if total_raw == 0:
-        return players_df
-        
-    scale_factor = target_minutes / total_raw
-    scaled_minutes = raw_minutes * scale_factor
-    
-    # Format back to standardized clean MM:SS
-    players_df["TIME"] = scaled_minutes.apply(format_time_cleanly)
-    return players_df
+    if max_mins > 235:
+        return 50  # 2 OT FIBA (50 minutes)
+    elif max_mins > 210:
+        return 45  # 1 OT FIBA (45 minutes)
+    elif max_mins > 180:
+        return 40  # Regulation FIBA (40 minutes)
+    elif max_mins > 145:
+        return 32  # Junior/Cadet (32 minutes)
+    else:
+        return 40  # Default fallback
 
 def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
     """
