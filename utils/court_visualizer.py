@@ -190,7 +190,7 @@ def draw_colorblind_shot_charts(pbp_df, selected_player=None):
                 text=sub_df["text"]
             ))
 
-        # 4. Hidden Dummy Trace to Force a Colored scale Legend on the Right Side
+        # 4. Hidden Dummy Trace to Force a Colored Scale Legend (Corrected with top-level dict for compatibility)
         fig.add_trace(go.Scatter(
             x=[None],
             y=[None],
@@ -201,12 +201,14 @@ def draw_colorblind_shot_charts(pbp_df, selected_player=None):
                 cmax=max_v,
                 showscale=True,
                 colorbar=dict(
-                    title="Punts per Tir" if metric_name == "PPS" else "Intents de Tir",
+                    title=dict(
+                        text="PPS (Punts per Tir)" if metric_name == "PPS" else "Intents de Tir",
+                        side="top"
+                    ),
                     thickness=15,
                     x=1.02,
                     y=0.5,
-                    ypad=10,
-                    titleside="top"
+                    ypad=10
                 )
             ),
             showlegend=False
