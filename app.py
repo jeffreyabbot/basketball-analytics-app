@@ -14,12 +14,13 @@ from utils.data_loader import (
     get_total_team_minutes,
     round_to_plausible_game_time,
     find_best_matching_pbp,
+    normalize_and_format_player_times,
     parse_time_to_minutes
 )
-from utils.court_visualizer import draw_colorblind_shot_chart
+from utils.court_visualizer import draw_colorblind_shot_charts
 
 # Page config & Theme (Must be first)
-st.set_page_config(page_title="Analítica Copa Catalunya", layout="wide")
+st.set_page_config(page_title="Team Basketball Analytics", layout="wide")
 
 # Simple Access Control Gating
 def check_password():
@@ -27,7 +28,7 @@ def check_password():
         st.session_state.authenticated = False
     
     if not st.session_state.authenticated:
-        st.title("🔒 Staff Login Analítica Copa Catalunya")
+        st.title("🔒 Staff Login")
         correct_password = st.secrets.get("auth", {}).get("password", None)
         
         if not correct_password:
@@ -44,6 +45,8 @@ def check_password():
         st.stop()
 
 check_password()
+
+# --- Rest of the application ---
 
 RAW_DIR = "data/raw"
 
@@ -63,7 +66,7 @@ if not seasons:
 
 selected_season = st.sidebar.selectbox("Select Season", seasons)
 
-# 2. Dynamically resolve paths case-insensitively with Fallbacks
+# 2. Dynamically resolve paths case-insensitively with Root Folder Fallbacks
 PBP_DIR = resolve_path_case_insensitive(RAW_DIR, selected_season, "pbp")
 if not PBP_DIR or not os.path.exists(PBP_DIR):
     PBP_DIR = resolve_path_case_insensitive(RAW_DIR, "pbp")
@@ -84,7 +87,7 @@ if view == "Game Analyzer":
     st.title(f"Game Analyzer ({selected_season.replace('_', ' ')})")
     
     if not BOX_DIR or not os.path.exists(BOX_DIR):
-        st.info("No boxscore directory found in raw data folder. Please check path names (case-insensitive).")
+        st.info("No boxscore directory found in raw data folder. Please check path names.")
     else:
         games = load_all_game_options(BOX_DIR)
         
@@ -96,14 +99,18 @@ if view == "Game Analyzer":
             # Parse data
             team_summary, (t1_name, t1_players), (t2_name, t2_players) = parse_boxscore(selected_game["path"])
             
-            # Calculate standard plausible game duration based on player times
+            # Calculate total summed times and normalize/scale standard regulation/OT player minutes
             t1_mins = get_total_team_minutes(t1_players)
             t2_mins = get_total_team_minutes(t2_players)
             game_total_mins = max(t1_mins, t2_mins)
             rounded_game_mins = round_to_plausible_game_time(game_total_mins)
             
-            # Fuzzy match PBP files dynamically
-            pbp_path = find_best_matching_pbp(selected_game["filename"], PBP_DIR)
+            # Perform player minute normalization (makes player sum perfectly match 200, 225, 250, etc.)
+            t1_players = normalize_and_format_player_times(t1_players, rounded_game_mins)
+            t2_players = normalize_and_format_player_times(t2_players, rounded_game_mins)
+            
+            # Robust team name overlay matching for PBP sheets
+            pbp_path = find_best_matching_pbp(t1_name, t2_name, PBP_DIR)
             has_pbp = pbp_path is not None and os.path.exists(pbp_path)
             if has_pbp:
                 pbp_df, shot_zone_df, lineups_df = parse_pbp(pbp_path)
@@ -194,14 +201,19 @@ if view == "Game Analyzer":
                     all_players_list = ["All"] + sorted(list(pbp_df["Player"].dropna().unique()))
                     shot_player = st.selectbox("Filter Shot Locations by Player", all_players_list)
                     
-                    chart_col, log_col = st.columns([2, 1])
-                    with chart_col:
-                        fig_shot = draw_colorblind_shot_chart(pbp_df, selected_player=shot_player)
-                        st.plotly_chart(fig_shot, use_container_width=True)
-                    with log_col:
-                        st.write("Quarter/Time Event Feed")
-                        st.dataframe(pbp_df[["quarter", "time", "text"]].dropna().head(100), height=500, use_container_width=True)
+                    # Renders side-by-side shot charts for Volume & PPS
+                    fig_vol, fig_pps = draw_colorblind_shot_charts(pbp_df, selected_player=shot_player)
+                    
+                    col_map1, col_map2 = st.columns(2)
+                    with col_map1:
+                        st.plotly_chart(fig_vol, use_container_width=True)
+                    with col_map2:
+                        st.plotly_chart(fig_pps, use_container_width=True)
                         
+                    st.markdown("---")
+                    st.write("Quarter/Time Event Feed")
+                    st.dataframe(pbp_df[["quarter", "time", "text"]].dropna().head(100), height=500, use_container_width=True)
+
                 with lineup_tab:
                     st.write("On-Court Lineup Performance Records")
                     st.dataframe(lineups_df, use_container_width=True)
@@ -221,7 +233,7 @@ elif view == "League & Season Trends":
         
         with tab_off:
             st.write("Sorted League Efficiency (Offensive Metrics)")
-            # Set explicit viewport height to show all teams on page
+            # Height enlarged to 600px to display all teams clearly
             st.dataframe(offense_df.sort_values("OERcal", ascending=False).style.format(precision=2), use_container_width=True, height=600)
             
         with tab_def:
@@ -234,31 +246,36 @@ elif view == "League & Season Trends":
             # Merge offense and defense to get complete metrics
             league_df = offense_df.merge(defense_df, on="Team", suffixes=("_Off", "_Def"))
             
+            # Dictionary maps parsed cleanly to avoid inline multi-line lambda compile warnings
+            x_labels = {
+                "OERcal_Off": "Offensive Rating (OER)",
+                "eFG%_Off": "Offensive eFG%",
+                "TOV%cal_Off": "Offensive Turnover Rate (TOV%)",
+                "ORB%cal_Off": "Offensive Rebounding % (ORB%)",
+                "FTR_Off": "Free Throw Rate (FTR)"
+            }
+            
+            y_labels = {
+                "DERcal_Off": "Defensive Rating (DER)",
+                "eFG%_Def": "Defensive eFG% (Opp eFG%)",
+                "TOV%cal_Def": "Defensive Turnover Rate (Opp TOV%)",
+                "ORB%cal_Def": "Opponent Offensive Rebounding % (Opp ORB%)",
+                "FTR_Def": "Defensive Free Throw Rate (Opp FTR)"
+            }
+            
             # Let the coaches select which metric to plot on X and Y
             col_scat1, col_scat2 = st.columns(2)
             with col_scat1:
                 x_metric = st.selectbox(
                     "X Axis (Offensive Metric)", 
-                    ["OERcal_Off", "eFG%_Off", "TOV%cal_Off", "ORB%cal_Off", "FTR_Off"],
-                    format_func=lambda x: {
-                        "OERcal_Off": "Offensive Rating (OER)",
-                        "eFG%_Off": "Offensive eFG%",
-                        "TOV%cal_Off": "Offensive Turnover Rate (TOV%)",
-                        "ORB%cal_Off": "Offensive Rebounding % (ORB%)",
-                        "FTR_Off": "Free Throw Rate (FTR)"
-                    }[x]
+                    list(x_labels.keys()),
+                    format_func=lambda x: x_labels[x]
                 )
             with col_scat2:
                 y_metric = st.selectbox(
                     "Y Axis (Defensive Metric)", 
-                    ["DERcal_Off", "eFG%_Def", "TOV%cal_Def", "ORB%cal_Def", "FTR_Def"],
-                    format_func=lambda y: {
-                        "DERcal_Off": "Defensive Rating (DER)",
-                        "eFG%_Def": "Defensive eFG% (Opp eFG%)",
-                        "TOV%cal_Def": "Defensive Turnover Rate (Opp TOV%)",
-                        "ORB%cal_Def": "Opponent Offensive Rebounding % (Opp ORB%)",
-                        "FTR_Def": "Defensive Free Throw Rate (Opp FTR)"
-                    }[y]
+                    list(y_labels.keys()),
+                    format_func=lambda y: y_labels[y]
                 )
             
             fig_scat = px.scatter(
@@ -288,7 +305,7 @@ elif view == "League & Season Trends":
             fig_scat.add_vline(x=mean_x, line_dash="dash", line_color=CB_ORANGE, annotation_text="Avg Off")
             fig_scat.add_hline(y=mean_y, line_dash="dash", line_color=CB_ORANGE, annotation_text="Avg Def")
             
-            # Reverse Y axis only if it is DER or Def eFG% (where lower is better)
+            # Reverse Y axis only if it is DER, Def eFG%, or Def FTR (where lower value is better)
             if y_metric in ["DERcal_Off", "eFG%_Def", "FTR_Def"]:
                 fig_scat.update_yaxes(autorange="reversed")
                 
@@ -309,7 +326,7 @@ elif view == "Player Shooting Index":
         master_players["eFG%"] = pd.to_numeric(master_players["eFG%"], errors='coerce')
         master_players["FGA"] = pd.to_numeric(master_players["FGA"], errors='coerce')
         
-        # Parse TIME column to float minutes for numerical sorting/filtering
+        # Parse TIME column to float minutes for numerical filtering
         master_players["MinPerGame"] = master_players["TIME"].apply(parse_time_to_minutes)
         
         st.write("Season aggregate player sorting engine. Filter by minimum performance thresholds.")
@@ -338,7 +355,7 @@ elif view == "Player Shooting Index":
         
         st.dataframe(
             sorted_players[view_cols].style.format({
-                "TIME": "{}", # Time is formatted already as clear MM:SS string
+                "TIME": "{}", # Time is already formatted clean string
                 "FGA": "{:.1f}",
                 "PTS": "{:.1f}",
                 "eFG%": "{:.2f}%",

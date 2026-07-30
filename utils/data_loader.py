@@ -137,7 +137,7 @@ def parse_aggregate(file_path):
     master_players = pd.concat(all_players, ignore_index=True)
     return offense_df, defense_df, master_players
 
-# --- REFINED HELPERS FOR ACCESS CONTROL & TIME ROUNDING ---
+# --- HELPERS FOR TIME ROUNDING & ADVANCED PBP ALIGNMENT ---
 
 def parse_time_to_minutes(time_str):
     """Parses standard MM:SS string or float representations into float minutes."""
@@ -184,37 +184,63 @@ def round_to_plausible_game_time(total_minutes):
     plausible_times = [200, 225, 250, 275, 300]
     return min(plausible_times, key=lambda x: abs(x - total_minutes))
 
-def find_best_matching_pbp(boxscore_filename, pbp_dir):
+def normalize_and_format_player_times(players_df, target_minutes):
     """
-    Matches boxscore files to PBP files inside the directory based on overlapping terms,
-    allowing for minor prefix/suffix differences and different score tracking names.
+    Scales and normalizes individual player times proportionally so their 
+    sum perfectly equals standard target game minutes (e.g. 200 or 225).
+    """
+    if "TIME" not in players_df.columns or players_df.empty:
+        return players_df
+        
+    raw_minutes = players_df["TIME"].apply(parse_time_to_minutes)
+    total_raw = raw_minutes.sum()
+    
+    if total_raw == 0:
+        return players_df
+        
+    scale_factor = target_minutes / total_raw
+    scaled_minutes = raw_minutes * scale_factor
+    
+    # Format back to standardized clean MM:SS
+    players_df["TIME"] = scaled_minutes.apply(format_time_cleanly)
+    return players_df
+
+def find_best_matching_pbp(t1_name, t2_name, pbp_dir):
+    """
+    Matches boxscores to PBP files by scanning the filenames for 
+    the presence of key elements of both team names. Case and folder prefix independent.
     """
     if not pbp_dir or not os.path.exists(pbp_dir):
         return None
         
-    box_clean = boxscore_filename.lower().replace("boxscore_", "").replace(".xlsx", "")
-    box_words = set(re.findall(r'\w+', box_clean))
-    box_words.discard("analysis")
-    box_words.discard("vs")
-    
     pbp_files = [f for f in os.listdir(pbp_dir) if f.lower().endswith(".xlsx")]
     if not pbp_files:
         return None
         
-    best_match = None
-    max_overlap = 0
+    # Standardize team names to lowercase words
+    t1_words = set(re.findall(r'\w+', t1_name.lower()))
+    t2_words = set(re.findall(r'\w+', t2_name.lower()))
+    
+    # Remove common short words or league designations
+    for common in ["cb", "c", "b", "1", "2", "3", "a", "basket", "basquet", "club"]:
+        t1_words.discard(common)
+        t2_words.discard(common)
+        
+    best_file = None
+    best_score = 0
     
     for pf in pbp_files:
-        pbp_clean = pf.lower().replace("pbp_", "").replace(".xlsx", "")
-        pbp_words = set(re.findall(r'\w+', pbp_clean))
-        pbp_words.discard("analysis")
-        pbp_words.discard("vs")
+        pf_lower = pf.lower()
+        t1_matches = sum(1 for w in t1_words if w in pf_lower)
+        t2_matches = sum(1 for w in t2_words if w in pf_lower)
         
-        overlap = len(box_words.intersection(pbp_words))
-        if overlap > max_overlap:
-            max_overlap = overlap
-            best_match = pf
-            
-    if max_overlap >= 1:
-        return os.path.join(pbp_dir, best_match)
+        # If the file contains identifiers from BOTH teams, it's a solid match
+        if t1_matches >= 1 and t2_matches >= 1:
+            score = t1_matches + t2_matches
+            if score > best_score:
+                best_score = score
+                best_file = pf
+                
+    if best_file:
+        return os.path.join(pbp_dir, best_file)
     return None
