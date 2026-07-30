@@ -4,28 +4,50 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 
-from utils.data_loader import load_all_game_options, parse_boxscore, parse_pbp, parse_aggregate
+# Consolidated data loader imports
+from utils.data_loader import (
+    get_available_seasons, 
+    load_all_game_options, 
+    parse_boxscore, 
+    parse_pbp, 
+    parse_aggregate
+)
 from utils.court_visualizer import draw_colorblind_shot_chart
 
 # Page config & Theme
 st.set_page_config(page_title="Team Basketball Analytics", layout="wide")
+
+RAW_DIR = "data/raw"
 
 # High contrast/accessible color constants (Safe for deuteranopia & protanopia)
 CB_BLUE = "#1f77b4"
 CB_ORANGE = "#ff7f0e"
 CB_NEUTRAL = "#4a4a4a"
 
-# Set up raw data paths
-PBP_DIR = "data/raw/pbp"
-BOX_DIR = "data/raw/boxscores"
-AGG_FILE = "data/raw/aggregate/aggregate_season_latest.xlsx"
-
 st.sidebar.title("🏀 Coaching Hub")
+
+# 1. Season Selector in Sidebar (Resolves first)
+seasons = get_available_seasons(RAW_DIR)
+
+if not seasons:
+    st.sidebar.error("Please create a season folder (e.g., 'Copa_2025_2026') inside data/raw/")
+    st.info("Structure your folders as: `data/raw/YOUR_SEASON_NAME/pbp/`, etc.")
+    st.stop()
+
+selected_season = st.sidebar.selectbox("Select Season", seasons)
+
+# 2. Dynamically resolve paths based on selected season
+PBP_DIR = os.path.join(RAW_DIR, selected_season, "pbp")
+BOX_DIR = os.path.join(RAW_DIR, selected_season, "boxscores")
+AGG_FILE = os.path.join(RAW_DIR, selected_season, "aggregate", "aggregate_season_latest.xlsx")
+
+# 3. View Selector (Only defined once to avoid Streamlit Duplicate ID errors)
 view = st.sidebar.radio("Navigate Views", ["Game Analyzer", "League & Season Trends", "Player Shooting Index"])
+
 
 # ----------------- VIEW 1: GAME ANALYZER -----------------
 if view == "Game Analyzer":
-    st.title("Game Analyzer")
+    st.title(f"Game Analyzer ({selected_season.replace('_', ' ')})")
     
     # Ensure raw directories exist
     os.makedirs(BOX_DIR, exist_ok=True)
@@ -34,7 +56,7 @@ if view == "Game Analyzer":
     games = load_all_game_options(BOX_DIR)
     
     if not games:
-        st.info("No games loaded in raw folders. Please add your weekly boxscore/pbp Excel files to the `/data/raw/` directories.")
+        st.info("No games loaded in raw folders. Please add your weekly boxscore/pbp Excel files to the directories.")
     else:
         selected_game = st.selectbox("Select Matchup", games, format_func=lambda g: g["name"])
         
@@ -125,12 +147,13 @@ if view == "Game Analyzer":
         else:
             st.warning("No matching Play-By-Play dataset found for this game. Upload corresponding PBP files into data directory.")
 
+
 # ----------------- VIEW 2: LEAGUE & SEASON TRENDS -----------------
 elif view == "League & Season Trends":
-    st.title("League & Season Trends")
+    st.title(f"League & Season Trends ({selected_season.replace('_', ' ')})")
     
     if not os.path.exists(AGG_FILE):
-        st.info("No aggregate file found. Place your `aggregate_season_latest.xlsx` file in the `/data/raw/aggregate/` directory.")
+        st.info("No aggregate file found. Place your `aggregate_season_latest.xlsx` file in the correct directory.")
     else:
         offense_df, defense_df, master_players = parse_aggregate(AGG_FILE)
         
@@ -170,12 +193,13 @@ elif view == "League & Season Trends":
             fig_scat.update_yaxes(autorange="reversed")  # Lower defensive rating is better!
             st.plotly_chart(fig_scat, use_container_width=True)
 
+
 # ----------------- VIEW 3: PLAYER SHOOTING INDEX -----------------
 elif view == "Player Shooting Index":
-    st.title("Player Shooting Index")
+    st.title(f"Player Shooting Index ({selected_season.replace('_', ' ')})")
     
     if not os.path.exists(AGG_FILE):
-        st.info("No aggregate files loaded. Please ensure seasonal player excel data is placed in the raw directories.")
+        st.info("No aggregate files loaded. Please ensure seasonal player excel data is placed in the correct directories.")
     else:
         _, _, master_players = parse_aggregate(AGG_FILE)
         
