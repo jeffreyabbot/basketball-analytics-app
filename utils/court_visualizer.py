@@ -66,72 +66,89 @@ def get_zone_stats(pbp_df, selected_player=None):
 
 def draw_colorblind_shot_charts(pbp_df, selected_player=None):
     """
-    Renders two side-by-side shot charts on a side-facing FIBA half-court with completed lines.
-    1. Volume Chart (Attempts in Zone)
-    2. PPS Chart (Points Per Shot in Zone)
+    Renders two side-by-side shot charts on a side-facing FIBA half-court.
+    Uses programmatic coordinate traces instead of layout shapes to prevent distortions.
     """
     df, stats_dict = get_zone_stats(pbp_df, selected_player)
     
+    # Clean player label fallback for Catalan
+    st_player_label = "Tots" if not selected_player or selected_player == "All" else selected_player
+    
     if df.empty:
         fig_vol = go.Figure()
-        fig_vol.add_annotation(text="No shot coordinates found for this selection", showarrow=False, font=dict(size=14))
+        fig_vol.add_annotation(text="No s'han trobat coordenades de tir per a aquesta selecció", showarrow=False, font=dict(size=14))
         fig_vol.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), height=400)
         return fig_vol, fig_vol
         
-    # 1. Volume Chart (sequential Viridis)
+    # 1. Volume Chart
     fig_vol = px.scatter(
         df,
         x="Parsed_X",
         y="Parsed_Y",
         color="Zone_Attempts",
         color_continuous_scale="Viridis",
-        labels={"Zone_Attempts": "Attempts in Zone"},
-        title="Shot Volume by Zone",
+        labels={"Zone_Attempts": "Intents a la Zona"},
+        title=f"Volum de Tirs per Zona - {st_player_label}",
         hover_data={"Parsed_X": False, "Parsed_Y": False, "Clean_Zone": True, "Zone_Attempts": True, "time": True}
     )
     
-    # 2. PPS Chart (sequential Cividis)
+    # 2. PPS Chart
     fig_pps = px.scatter(
         df,
         x="Parsed_X",
         y="Parsed_Y",
         color="Zone_PPS",
         color_continuous_scale="Cividis",
-        labels={"Zone_PPS": "Points Per Shot (PPS)"},
-        title="Shot Efficiency (PPS) by Zone",
+        labels={"Zone_PPS": "Punts per Tir (PPS)"},
+        title=f"Eficiència de Tir (PPS) per Zona - {st_player_label}",
         hover_data={"Parsed_X": False, "Parsed_Y": False, "Clean_Zone": True, "Zone_PPS": ":.2f", "time": True}
     )
     
-    # Draw standard side-facing half-court lines on both figures
+    # --- FIBA Side-Facing Court Coordinate Calculation ---
+    # Basket center is at (5.25, 25).
+    # Radius of 3-point arc is 22.15 feet (6.75 meters).
+    # Calculations for straight 3-point lines joining corner arcs cleanly:
+    theta_limit = np.arcsin(22.0 / 22.15)
+    arc_angles = np.linspace(-theta_limit, theta_limit, 100)
+    arc_x = 5.25 + 22.15 * np.cos(arc_angles)
+    arc_y = 25.0 + 22.15 * np.sin(arc_angles)
+    
+    # Hoop circle trace
+    hoop_angles = np.linspace(0, 2*np.pi, 50)
+    hoop_x = 5.25 + 0.75 * np.cos(hoop_angles)
+    hoop_y = 25.0 + 0.75 * np.sin(hoop_angles)
+    
+    # Free throw semi-circle trace
+    ft_angles = np.linspace(-np.pi/2, np.pi/2, 50)
+    ft_x = 19.0 + 6.0 * np.cos(ft_angles)
+    ft_y = 25.0 + 6.0 * np.sin(ft_angles)
+
+    court_traces = [
+        # Outer boundary lines (Rectangle)
+        go.Scatter(x=[0, 47, 47, 0, 0], y=[0, 0, 50, 50, 0], mode="lines", line=dict(color="lightgray", width=1.5), showlegend=False),
+        # Restricted Key/Paint Area
+        go.Scatter(x=[0, 19, 19, 0], y=[17, 17, 33, 33], mode="lines", line=dict(color="lightgray", width=1.5), showlegend=False),
+        # Free-throw semi-circle
+        go.Scatter(x=ft_x, y=ft_y, mode="lines", line=dict(color="lightgray", width=1.5), showlegend=False),
+        # Backboard line
+        go.Scatter(x=[4, 4], y=[22, 28], mode="lines", line=dict(color="lightgray", width=2.5), showlegend=False),
+        # Hoop/Rim
+        go.Scatter(x=hoop_x, y=hoop_y, mode="lines", line=dict(color="lightgray", width=2), showlegend=False),
+        # 3-Point Arc Line (Cantonades rectes + arc perfectament calculats)
+        go.Scatter(x=[0.0] + list(arc_x) + [0.0], y=[3.0] + list(arc_y) + [47.0], mode="lines", line=dict(color="lightgray", width=1.5), showlegend=False)
+    ]
+    
     for fig in [fig_vol, fig_pps]:
-        # Baseline & Halfcourt boundaries (X: 0 to 47, Y: 0 to 50)
-        fig.add_shape(type="rect", x0=0, y0=0, x1=47, y1=50, line=dict(color="lightgray", width=1.5))
-        
-        # Restricted Key/Paint Area (standard 19ft length x 16ft width centered at Y=25)
-        fig.add_shape(type="rect", x0=0, y0=17, x1=19, y1=33, line=dict(color="lightgray", width=1.5))
-        
-        # Free-throw line semi-circle (radius 6ft centered at X=19, Y=25)
-        fig.add_shape(type="circle", x0=13, y0=19, x1=25, y1=31, line=dict(color="lightgray", width=1.5))
-        
-        # Backboard line (offset behind hoop at X=4)
-        fig.add_shape(type="line", x0=4, y0=22, x1=4, y1=28, line=dict(color="lightgray", width=2))
-        
-        # Hoop/Rim (radius 0.75ft centered at X=5.25, Y=25)
-        fig.add_shape(type="circle", x0=4.5, y0=24.25, x1=6.0, y1=25.75, line=dict(color="lightgray", width=2))
-        
-        # Corner 3 straight lines (extending from baseline X=0 to X=14 at Y=3 and Y=47)
-        fig.add_shape(type="line", x0=0, y0=3, x1=14, y1=3, line=dict(color="lightgray", width=1.5))
-        fig.add_shape(type="line", x0=0, y0=47, x1=14, y1=47, line=dict(color="lightgray", width=1.5))
-        
-        # 3-Point Arc curve (radius 22.15ft centered at Hoop X=5.25, Y=25)
-        fig.add_shape(type="circle", x0=-16.9, y0=2.85, x1=27.4, y1=47.15, line=dict(color="lightgray", width=1.5))
-        
-        # Lock visual scales and ranges
+        # Add all visual court traces to the plot
+        for trace in court_traces:
+            fig.add_trace(trace)
+            
+        # Update layout and BLOCK ASPECT RATIO so the court never stretches
         fig.update_layout(
-            xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[0, 48]),
-            yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[0, 50]),
+            xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-1, 48]),
+            yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-1, 51], scaleanchor="x", scaleratio=1),
             plot_bgcolor="white",
-            height=450,
+            height=500,
             margin=dict(l=20, r=20, t=40, b=20)
         )
         
