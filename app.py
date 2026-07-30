@@ -28,7 +28,7 @@ def check_password():
         st.session_state.authenticated = False
     
     if not st.session_state.authenticated:
-        st.title("🔒 Accés per a l'Staff")
+        st.title("🔒 Accés Staff")
         correct_password = st.secrets.get("auth", {}).get("password", None)
         
         if not correct_password:
@@ -54,7 +54,7 @@ CB_BLUE = "#1f77b4"
 CB_ORANGE = "#ff7f0e"
 CB_NEUTRAL = "#4a4a4a"
 
-st.sidebar.title("🏀 Hub de l'Staff")
+st.sidebar.title("🏀 Analítica COPA")
 
 # 1. Season Selector in Sidebar
 seasons = get_available_seasons(RAW_DIR)
