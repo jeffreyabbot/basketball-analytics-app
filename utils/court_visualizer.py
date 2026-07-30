@@ -66,7 +66,7 @@ def get_zone_stats(pbp_df, selected_player=None):
 
 def draw_colorblind_shot_charts(pbp_df, selected_player=None):
     """
-    Renders two side-by-side shot charts using colorblind-safe color scales:
+    Renders two side-by-side shot charts on a side-facing FIBA half-court.
     1. Volume Chart (Attempts in Zone)
     2. PPS Chart (Points Per Shot in Zone)
     """
@@ -102,13 +102,30 @@ def draw_colorblind_shot_charts(pbp_df, selected_player=None):
         hover_data={"Parsed_X": False, "Parsed_Y": False, "Clean_Zone": True, "Zone_PPS": ":.2f", "time": True}
     )
     
-    # Draw standard baseline/rim boundaries on half-court
+    # Draw standard side-facing half-court lines on both figures
     for fig in [fig_vol, fig_pps]:
-        fig.add_shape(type="rect", x0=0, y0=0, x1=50, y1=47, line=dict(color="lightgray", width=1.5))
-        fig.add_shape(type="circle", x0=22, y0=4.25, x1=28, y1=10.25, line=dict(color="lightgray", width=1.5))
+        # Baseline & Halfcourt boundaries
+        fig.add_shape(type="rect", x0=0, y0=0, x1=47, y1=50, line=dict(color="lightgray", width=1.5))
+        
+        # Restricted Key/Paint Area (standard 19ft length x 16ft width centered at Y=25)
+        fig.add_shape(type="rect", x0=0, y0=17, x1=19, y1=33, line=dict(color="lightgray", width=1.5))
+        
+        # Free-throw line semi-circle (radius 6ft centered at X=19, Y=25)
+        fig.add_shape(type="circle", x0=13, y0=19, x1=25, y1=31, line=dict(color="lightgray", width=1.5))
+        
+        # Backboard line (offset behind hoop at X=4)
+        fig.add_shape(type="line", x0=4, y0=22, x1=4, y1=28, line=dict(color="lightgray", width=2))
+        
+        # Hoop/Rim (radius 0.75ft centered at X=5.25, Y=25)
+        fig.add_shape(type="circle", x0=4.5, y0=24.25, x1=6.0, y1=25.75, line=dict(color="lightgray", width=2))
+        
+        # 3-Point Arc (radius 22.15ft centered at Hoop X=5.25, Y=25)
+        fig.add_shape(type="circle", x0=-16.9, y0=2.85, x1=27.4, y1=47.15, line=dict(color="lightgray", width=1.5))
+        
+        # Lock visual scales and ranges
         fig.update_layout(
-            xaxis=dict(showgrid=False, zeroline=False, visible=False),
-            yaxis=dict(showgrid=False, zeroline=False, visible=False),
+            xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[0, 48]),
+            yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[0, 50]),
             plot_bgcolor="white",
             height=450,
             margin=dict(l=20, r=20, t=40, b=20)

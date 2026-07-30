@@ -105,12 +105,12 @@ if view == "Game Analyzer":
             game_total_mins = max(t1_mins, t2_mins)
             rounded_game_mins = round_to_plausible_game_time(game_total_mins)
             
-            # Perform player minute normalization (makes player sum perfectly match 200, 225, 250, etc.)
+            # Perform player minute normalization (makes player sum perfectly match 160, 180, 200, 225, etc.)
             t1_players = normalize_and_format_player_times(t1_players, rounded_game_mins)
             t2_players = normalize_and_format_player_times(t2_players, rounded_game_mins)
             
             # Robust team name overlay matching for PBP sheets
-            pbp_path = find_best_matching_pbp(t1_name, t2_name, PBP_DIR)
+            pbp_path = find_best_matching_pbp(t1_name, t2_name, PBP_DIR, selected_game["filename"])
             has_pbp = pbp_path is not None and os.path.exists(pbp_path)
             if has_pbp:
                 pbp_df, shot_zone_df, lineups_df = parse_pbp(pbp_path)
@@ -175,7 +175,7 @@ if view == "Game Analyzer":
             # Standard columns groupings
             standard_cols = ["JUGADOR", "TIME", "PTS", "2PM", "2PA", "3PM", "3PA", "FTM", "FTA", "ORB", "DRB", "AS", "STL", "BLK", "TO", "F", "F+"]
             advanced_cols = ["JUGADOR", "TIME", "EFI", "USG%cal", "eFG%", "TS%", "FTR", "TO%cal", "PTS/PLAYcal", "TOpts", "2CPts"]
-            zone_cols = ["JUGADOR", "Rim FGM", "Rim FGA", "Rim %", "Paint FGM", "Paint FGA", "Paint %", "MR FGM", "MR FGA", "MR %", "Cor3 FGM", "Cor3 FGA", "Cor3 %", "ATB3 FGM", "ATB3 FGA", "ATB3 %"]
+            zone_cols = ["JUGADOR", "TIME", "Rim FGM", "Rim FGA", "Rim %", "Paint FGM", "Paint FGA", "Paint %", "MR FGM", "MR FGA", "MR %", "Cor3 FGM", "Cor3 FGA", "Cor3 %", "ATB3 FGM", "ATB3 FGA", "ATB3 %"]
 
             team_tab1, team_tab2 = st.tabs([t1_name, t2_name])
             
@@ -213,7 +213,7 @@ if view == "Game Analyzer":
                     st.markdown("---")
                     st.write("Quarter/Time Event Feed")
                     st.dataframe(pbp_df[["quarter", "time", "text"]].dropna().head(100), height=500, use_container_width=True)
-
+                    
                 with lineup_tab:
                     st.write("On-Court Lineup Performance Records")
                     st.dataframe(lineups_df, use_container_width=True)

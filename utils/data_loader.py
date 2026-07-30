@@ -3,6 +3,7 @@ import numpy as np
 import glob
 import os
 import re
+import datetime
 
 def resolve_path_case_insensitive(base_dir, *subdirs_and_file):
     """
@@ -137,21 +138,57 @@ def parse_aggregate(file_path):
     master_players = pd.concat(all_players, ignore_index=True)
     return offense_df, defense_df, master_players
 
-# --- HELPERS FOR TIME ROUNDING & ADVANCED PBP ALIGNMENT ---
+# --- HELPERS FOR TIME ROUNDING & MULTI-METRIC PBP ALIGNMENT ---
 
-def parse_time_to_minutes(time_str):
-    """Parses standard MM:SS string or float representations into float minutes."""
-    try:
-        if pd.isna(time_str):
-            return 0.0
-        time_str = str(time_str).strip()
-        if ":" in time_str:
-            parts = time_str.split(":")
-            return float(parts[0]) + float(parts[1]) / 60.0
-        else:
-            return float(time_str)
-    except ValueError:
+def parse_time_to_minutes(val):
+    """
+    Highly resilient converter that parses strings (MM:SS), floats,
+    datetime.time, and Excel datetimes to clean decimal minutes.
+    """
+    if pd.isna(val):
         return 0.0
+        
+    # 1. Handle Python datetime.time objects
+    if isinstance(val, datetime.time):
+        return val.hour * 60 + val.minute + val.second / 60.0
+        
+    # 2. Handle Python datetime.datetime objects (Excel parses MM:SS as HH:MM:00)
+    if isinstance(val, datetime.datetime):
+        # We parse the hour component as minutes and the minute component as seconds
+        return val.hour + val.minute / 60.0 + val.second / 3600.0
+        
+    val_str = str(val).strip()
+    
+    # Strip any date prefixes (e.g. "1899-12-31 22:09:00")
+    if " " in val_str:
+        val_str = val_str.split(" ")[-1]
+        
+    if ":" in val_str:
+        parts = val_str.split(":")
+        if len(parts) == 3:
+            try:
+                h = float(parts[0])
+                m = float(parts[1])
+                s = float(parts[2])
+                if h == 0:
+                    return m + s / 60.0
+                else:
+                    if s == 0:
+                        return h + m / 60.0
+                    else:
+                        return h * 60 + m + s / 60.0
+            except ValueError:
+                return 0.0
+        elif len(parts) == 2:
+            try:
+                return float(parts[0]) + float(parts[1]) / 60.0
+            except ValueError:
+                return 0.0
+    else:
+        try:
+            return float(val_str)
+        except ValueError:
+            return 0.0
 
 def format_time_cleanly(val):
     """Converts numeric or string times into a clean, unified MM:SS format."""
@@ -180,8 +217,11 @@ def get_total_team_minutes(players_df):
     return total_minutes
 
 def round_to_plausible_game_time(total_minutes):
-    """Rounds parsed team minutes to standard regulation/OT durations (e.g. 200, 225, 250)."""
-    plausible_times = [200, 225, 250, 275, 300]
+    """
+    Rounds parsed team minutes to standard regulation/OT durations.
+    Added 160 minutes (32-minute cadet/junior) and 180 minutes profiles.
+    """
+    plausible_times = [150, 160, 180, 200, 225, 250, 275, 300]
     return min(plausible_times, key=lambda x: abs(x - total_minutes))
 
 def normalize_and_format_player_times(players_df, target_minutes):
@@ -205,24 +245,24 @@ def normalize_and_format_player_times(players_df, target_minutes):
     players_df["TIME"] = scaled_minutes.apply(format_time_cleanly)
     return players_df
 
-def find_best_matching_pbp(t1_name, t2_name, pbp_dir):
+def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
     """
-    Matches boxscores to PBP files by scanning the filenames for 
-    the presence of key elements of both team names. Case and folder prefix independent.
+    Finds PBP files via multiple matching fallbacks:
+    1. Team Name Overlaps (extracted from sheet)
+    2. Date/ID matching based on filename numbers
+    3. Flat file directories fallback (if only 1 file exists)
     """
     if not pbp_dir or not os.path.exists(pbp_dir):
         return None
         
-    pbp_files = [f for f in os.listdir(pbp_dir) if f.lower().endswith(".xlsx")]
+    pbp_files = [f for f in os.listdir(pbp_dir) if f.lower().endswith((".xlsx", ".xls"))]
     if not pbp_files:
         return None
         
-    # Standardize team names to lowercase words
+    # Attempt 1: Match by Team Name keywords (Strongest)
     t1_words = set(re.findall(r'\w+', t1_name.lower()))
     t2_words = set(re.findall(r'\w+', t2_name.lower()))
-    
-    # Remove common short words or league designations
-    for common in ["cb", "c", "b", "1", "2", "3", "a", "basket", "basquet", "club"]:
+    for common in ["cb", "c", "b", "1", "2", "3", "a", "basket", "basquet", "club", "unio", "esportiva"]:
         t1_words.discard(common)
         t2_words.discard(common)
         
@@ -234,7 +274,6 @@ def find_best_matching_pbp(t1_name, t2_name, pbp_dir):
         t1_matches = sum(1 for w in t1_words if w in pf_lower)
         t2_matches = sum(1 for w in t2_words if w in pf_lower)
         
-        # If the file contains identifiers from BOTH teams, it's a solid match
         if t1_matches >= 1 and t2_matches >= 1:
             score = t1_matches + t2_matches
             if score > best_score:
@@ -243,4 +282,18 @@ def find_best_matching_pbp(t1_name, t2_name, pbp_dir):
                 
     if best_file:
         return os.path.join(pbp_dir, best_file)
+        
+    # Attempt 2: Match by date/numbers inside the filename (Fallback)
+    box_numbers = re.findall(r'\d+', boxscore_filename)
+    if box_numbers:
+        longest_num = max(box_numbers, key=len)
+        if len(longest_num) >= 4:  # Match only on dates/game IDs
+            for pf in pbp_files:
+                if longest_num in pf:
+                    return os.path.join(pbp_dir, pf)
+                    
+    # Attempt 3: If only one PBP file exists, default to it
+    if len(pbp_files) == 1:
+        return os.path.join(pbp_dir, pbp_files[0])
+        
     return None
