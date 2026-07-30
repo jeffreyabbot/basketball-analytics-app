@@ -432,3 +432,17 @@ def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
         return os.path.join(pbp_dir, pbp_files[0])
         
     return None
+def tag_shot_team(pbp_df, t1_name, t2_name):
+    """Tags each play with the correct team name based on team stats columns."""
+    pbp_df = pbp_df.copy()
+    pbp_df["Shot_Team"] = "Desconegut"
+    
+    # If any Team A stat is 1, it belongs to Team A
+    team_a_mask = (pbp_df["FGA_A"] == 1) | (pbp_df["FGM_A"] == 1) | (pbp_df["2PA_A"] == 1) | (pbp_df["3PA_A"] == 1) | (pbp_df["FTA_A"] == 1)
+    pbp_df.loc[team_a_mask, "Shot_Team"] = t1_name
+    
+    # If any Team B stat is 1, it belongs to Team B
+    team_b_mask = (pbp_df["FGA_B"] == 1) | (pbp_df["FGM_B"] == 1) | (pbp_df["2PA_B"] == 1) | (pbp_df["3PA_B"] == 1) | (pbp_df["FTA_B"] == 1)
+    pbp_df.loc[team_b_mask, "Shot_Team"] = t2_name
+    
+    return pbp_df

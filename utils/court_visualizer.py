@@ -43,7 +43,7 @@ def get_color_from_scale(val, min_val, max_val, scale_name="Viridis"):
 def classify_zone_by_coords(x, y):
     """
     Classifies a shot into one of the 5 standard FIBA zones based on X/Y coordinates.
-    Serves as a 100% bulletproof fallback if raw string categories do not match English names.
+    Using physical coordinates is 100% robust against manual tracking labeling errors.
     """
     # Distance to hoop centered at (5.25, 25.0)
     dist_to_hoop = np.sqrt((x - 5.25)**2 + (y - 25.0)**2)
@@ -56,8 +56,8 @@ def classify_zone_by_coords(x, y):
     if 0 <= x <= 19.0 and 17.0 <= y <= 33.0:
         return "Paint"
         
-    # 3. Corner 3 (X < 8.0 to make corners smaller/proportionate, and Y < 3 or Y > 47)
-    if x < 8.0 and (y < 3.0 or y > 47.0):
+    # 3. Corner 3 (X < 9.8 to match exactly the 2.99m FIBA corner rule, and Y < 3 or Y > 47)
+    if x < 9.8 and (y < 3.0 or y > 47.0):
         return "Corner 3"
         
     # 4. Above the Break 3 (Outside 3pt arc: distance to hoop > 22.15)
@@ -74,15 +74,6 @@ def get_zone_stats(pbp_df, selected_player=None):
     else:
         df = pbp_df.copy()
         
-    # Bilingual Mapping dictionary (Spanish, Catalan, and English)
-    zone_mapping = {
-        "rim": "Rim", "bajo aro": "Rim", "aro": "Rim", "sota canastra": "Rim", "sota l'aro": "Rim",
-        "paint": "Paint", "zona": "Paint", "pintura": "Paint", "restricció": "Paint",
-        "mid-range": "Mid-Range", "mr": "Mid-Range", "media distancia": "Mid-Range", "mig rang": "Mid-Range", "media-distancia": "Mid-Range",
-        "corner 3": "Corner 3", "cor3": "Corner 3", "corner-3": "Corner 3", "triple esquina": "Corner 3", "triple-esquina": "Corner 3", "esquina": "Corner 3",
-        "above the break 3": "Above the Break 3", "atb3": "Above the Break 3", "above-the-break 3": "Above the Break 3", "triple frontal": "Above the Break 3", "triple-frontal": "Above the Break 3", "frontal": "Above the Break 3"
-    }
-    
     # Parse coordinates first to allow coordinate fallback
     df["Parsed_X"] = df["Shot_X"].apply(parse_coordinate)
     df["Parsed_Y"] = df["Shot_Y"].apply(parse_coordinate)
@@ -91,15 +82,10 @@ def get_zone_stats(pbp_df, selected_player=None):
     if df.empty:
         return df, {}
         
-    # Map by String first, fallback to Coordinate Classifier if unmapped
-    df["Clean_Zone"] = df["Shot_Zone"].astype(str).str.lower().str.strip().map(zone_mapping)
-    
-    # Apply the bulletproof coordinate classifier for any unmapped rows (e.g. if Rim was 0)
-    unmapped_mask = df["Clean_Zone"].isna()
-    if unmapped_mask.any():
-        df.loc[unmapped_mask, "Clean_Zone"] = df[unmapped_mask].apply(
-            lambda row: classify_zone_by_coords(row["Parsed_X"], row["Parsed_Y"]), axis=1
-        )
+    # Always classify by coordinates to guarantee 100% accurate zone counts
+    df["Clean_Zone"] = df.apply(
+        lambda row: classify_zone_by_coords(row["Parsed_X"], row["Parsed_Y"]), axis=1
+    )
         
     df["Points"] = pd.to_numeric(df["Points"], errors="coerce").fillna(0)
     
@@ -149,15 +135,15 @@ def draw_colorblind_shot_charts(pbp_df, selected_player=None):
     min_vol, max_vol = min(volumes or [0]), max(volumes or [1])
     min_pps, max_pps = min(pps_values or [0.0]), max(pps_values or [1.0])
 
-    # Disjoint polygon layout (Corner 3 width reduced to X=8.0; ATB3 base starts at X=8.0)
+    # Disjoint polygon layout (Corner 3 width reduced to X=9.8 matching FIBA; ATB3 base starts at X=9.8)
     zone_polygons = {
         "Corner 3": [
-            {"x": [0, 8, 8, 0, 0], "y": [-3, -3, 3, 3, -3]},      # Bottom Corner (X reduït a 8.0)
-            {"x": [0, 8, 8, 0, 0], "y": [47, 47, 53, 53, 47]}     # Top Corner (X reduït a 8.0)
+            {"x": [0, 9.8, 9.8, 0, 0], "y": [-3, -3, 3, 3, -3]},      # Bottom Corner (X reduït a 9.8)
+            {"x": [0, 9.8, 9.8, 0, 0], "y": [47, 47, 53, 53, 47]}     # Top Corner (X reduït a 9.8)
         ],
         "Above the Break 3": [
-            # ATB3 base starts at X=8.0, eliminating overlaps with Corner 3 on tooltip hover
-            {"x": [8, 47, 47, 8, 8] + list(arc_x[::-1]) + [8], 
+            # ATB3 base starts at X=9.8, eliminating overlaps with Corner 3 on tooltip hover
+            {"x": [9.8, 47, 47, 9.8, 9.8] + list(arc_x[::-1]) + [9.8], 
              "y": [-3, -3, 53, 53, 47] + list(arc_y[::-1]) + [-3]}
         ],
         "Mid-Range": [

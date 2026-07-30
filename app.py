@@ -15,7 +15,8 @@ from utils.data_loader import (
     estimate_game_duration,
     find_best_matching_pbp,
     normalize_and_format_player_times,
-    parse_time_to_minutes
+    parse_time_to_minutes,
+    tag_shot_team 
 )
 from utils.court_visualizer import draw_colorblind_shot_charts
 
@@ -106,6 +107,8 @@ if view == "Analitzador de Partits":
             pbp_df_param = None
             if has_pbp:
                 pbp_df, shot_zone_df, lineups_df = parse_pbp(pbp_path)
+                # Classifica de manera neta cada llançament a l'equip que toca
+                pbp_df = tag_shot_team(pbp_df, t1_name, t2_name)
                 pbp_df_param = pbp_df
             
             # Calculate standard regulation/OT game duration (player times are left unscaled/pristine)
@@ -194,13 +197,28 @@ if view == "Analitzador de Partits":
                 pbp_tab, lineup_tab = st.tabs(["Gràfics de Tir i Registre de Jugades", "Quintets Actius"])
                 
                 with pbp_tab:
-                    # Filter translations
-                    all_players_list = ["Tots"] + sorted(list(pbp_df["Player"].dropna().unique()))
-                    shot_player_sel = st.selectbox("Filtra els llançaments per jugador", all_players_list)
-                    shot_player = "All" if shot_player_sel == "Tots" else shot_player_sel
+                    # Selectors creuats per Equip i Jugador
+                    col_sel1, col_sel2 = st.columns(2)
+                    with col_sel1:
+                        selected_team = st.selectbox("Filtra per Equip", ["Tots els equips", t1_name, t2_name])
+                    with col_sel2:
+                        # Filtra la llista de jugadors segons l'equip seleccionat
+                        if selected_team == "Tots els equips":
+                            players_list = sorted(list(pbp_df["Player"].dropna().unique()))
+                        else:
+                            players_list = sorted(list(pbp_df[pbp_df["Shot_Team"] == selected_team]["Player"].dropna().unique()))
+                        
+                        all_players_list = ["Tots"] + players_list
+                        shot_player_sel = st.selectbox("Filtra els llançaments per jugador", all_players_list)
+                        shot_player = "All" if shot_player_sel == "Tots" else shot_player_sel
                     
-                    # Renders side-by-side shot charts for Volume & PPS (Blocked Proportions)
-                    fig_vol, fig_pps = draw_colorblind_shot_charts(pbp_df, selected_player=shot_player)
+                    # Filtra el dataframe segons l'equip triat
+                    pbp_df_filtered = pbp_df.copy()
+                    if selected_team != "Tots els equips":
+                        pbp_df_filtered = pbp_df_filtered[pbp_df_filtered["Shot_Team"] == selected_team]
+                        
+                    # Renders side-by-side shot charts amb filtre d'equip aplicat
+                    fig_vol, fig_pps = draw_colorblind_shot_charts(pbp_df_filtered, selected_player=shot_player)
                     
                     col_map1, col_map2 = st.columns(2)
                     with col_map1:
