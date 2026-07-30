@@ -23,7 +23,7 @@ def check_password():
         st.session_state.authenticated = False
     
     if not st.session_state.authenticated:
-        st.title("🔒 Login")
+        st.title("🔒 Login Analítica COPA")
         # Read password from Streamlit Cloud secrets manager
         correct_password = st.secrets.get("auth", {}).get("password", None)
         
