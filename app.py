@@ -3,7 +3,35 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import os
+import streamlit as st
 
+# (Set config must be the first Streamlit command)
+st.set_page_config(page_title="Team Basketball Analytics", layout="wide")
+
+# Simple Access Control
+def check_password():
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+    
+    if not st.session_state.authenticated:
+        st.title("🔒 Staff Login")
+        # Read password from Streamlit Cloud secrets manager
+        correct_password = st.secrets.get("auth", {}).get("password", None)
+        
+        if not correct_password:
+            st.error("Contrasenya incorrecta. Contacta amb l'administrator.")
+            st.stop()
+            
+        entered_password = st.text_input("Enter Staff Password", type="password")
+        if st.button("Login"):
+            if entered_password == correct_password:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Contrasenya incorrecta. Contacta amb l'administrator.")
+        st.stop()
+
+check_password()
 # Consolidated data loader imports
 from utils.data_loader import (
     get_available_seasons, 

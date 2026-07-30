@@ -45,13 +45,17 @@ def parse_boxscore(file_path):
         
     # Team 1 details
     t1_name = str(full_sheet.iloc[jugador_rows[0] - 1, 0]).strip()
-    t1_players = pd.read_excel(file_path, skiprows=jugador_rows[0] + 1)
-    # Stop before Team 2 starts
-    t1_players = t1_players.iloc[: jugador_rows[1] - jugador_rows[0] - 3].dropna(subset=["JUGADOR"])
+    # Corrected: Skip exactly up to the header row (do not add 1) so JUGADOR is the header
+    t1_players = pd.read_excel(file_path, skiprows=jugador_rows[0])
+    
+    # Corrected slice index due to adjustment above
+    slice_idx = jugador_rows[1] - jugador_rows[0] - 2
+    t1_players = t1_players.iloc[:slice_idx].dropna(subset=["JUGADOR"])
     
     # Team 2 details
     t2_name = str(full_sheet.iloc[jugador_rows[1] - 1, 0]).strip()
-    t2_players = pd.read_excel(file_path, skiprows=jugador_rows[1] + 1).dropna(subset=["JUGADOR"])
+    # Corrected: Skip exactly up to the header row
+    t2_players = pd.read_excel(file_path, skiprows=jugador_rows[1]).dropna(subset=["JUGADOR"])
     
     return team_df, (t1_name, t1_players), (t2_name, t2_players)
 
