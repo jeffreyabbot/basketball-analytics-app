@@ -446,3 +446,71 @@ def tag_shot_team(pbp_df, t1_name, t2_name):
     pbp_df.loc[team_b_mask, "Shot_Team"] = t2_name
     
     return pbp_df
+def load_and_aggregate_season_lineups(pbp_dir, selected_team):
+    """
+    Scans the PBP directory, opens all PBP files, extracts the lineups tab,
+    and aggregates lineup statistics for the selected team across the entire season.
+    """
+    if not pbp_dir or not os.path.exists(pbp_dir):
+        return pd.DataFrame()
+        
+    pbp_files = [os.path.join(pbp_dir, f) for f in os.listdir(pbp_dir) if f.lower().endswith((".xlsx", ".xls"))]
+    if not pbp_files:
+        return pd.DataFrame()
+        
+    all_lineups = []
+    for pf in pbp_files:
+        try:
+            xls = pd.ExcelFile(pf)
+            if len(xls.sheet_names) < 3:
+                continue
+            df_lineups = pd.read_excel(xls, sheet_name=2)
+            
+            # Find team column dynamically
+            team_col = None
+            for col in df_lineups.columns:
+                if df_lineups[col].astype(str).str.contains(selected_team, na=False).any():
+                    team_col = col
+                    break
+                    
+            if team_col is not None:
+                # Filter only rows for the selected team
+                df_team = df_lineups[df_lineups[team_col] == selected_team].copy()
+                all_lineups.append(df_team)
+        except Exception:
+            continue
+            
+    if not all_lineups:
+        return pd.DataFrame()
+        
+    combined_df = pd.concat(all_lineups, ignore_index=True)
+    combined_df.columns = combined_df.columns.str.strip()
+    
+    # Standardize player names order in Lineup string to ensure duplicates match
+    if "Lineup" not in combined_df.columns:
+        if all(c in combined_df.columns for c in ["P1", "P2", "P3", "P4", "P5"]):
+            combined_df["Lineup"] = combined_df[["P1", "P2", "P3", "P4", "P5"]].apply(
+                lambda row: ", ".join(sorted([str(row["P1"]), str(row["P2"]), str(row["P3"]), str(row["P4"]), str(row["P5"])])), axis=1
+            )
+        else:
+            return pd.DataFrame()
+            
+    # Numeric columns to aggregate
+    numeric_cols = ["PTS_For", "PTS_Agn", "+/-", "FTM_For", "FTA_For", "FTM_Agn", "FTA_Agn", "FOULS_Cor", "FOULS_Dra", "TOV_For", "TOV_Agn"]
+    available_numeric = [c for c in numeric_cols if c in combined_df.columns]
+    
+    for c in available_numeric:
+        combined_df[c] = pd.to_numeric(combined_df[c], errors="coerce").fillna(0.0)
+        
+    agg_dict = {c: "sum" for c in available_numeric}
+    for c in ["P1", "P2", "P3", "P4", "P5"]:
+        if c in combined_df.columns:
+            agg_dict[c] = "first"
+            
+    # Group by standardized Lineup string
+    aggregated = combined_df.groupby("Lineup").agg(agg_dict).reset_index()
+    
+    if "+/-" in aggregated.columns:
+        aggregated = aggregated.sort_values("+/-", ascending=False)
+        
+    return aggregated

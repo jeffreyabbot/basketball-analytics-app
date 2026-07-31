@@ -16,7 +16,8 @@ from utils.data_loader import (
     find_best_matching_pbp,
     normalize_and_format_player_times,
     parse_time_to_minutes,
-    tag_shot_team
+    tag_shot_team,
+    load_and_aggregate_season_lineups
 )
 from utils.court_visualizer import draw_boxscore_zone_charts
 
@@ -339,7 +340,13 @@ elif view == "Tendències de la Lliga":
             if col != "Team":
                 league_col_config[col] = st.column_config.NumberColumn(col, width=65)
 
-        tab_off, tab_def, tab_chart = st.tabs(["Classificació d'Atac de la Lliga", "Classificació de Defensa de la Lliga", "Gràfic de Dispersió"])
+        # canvi: Afegida la quarta pestanya per a l'acumulador de quintets multipartit de la Fase 3
+        tab_off, tab_def, tab_chart, tab_lineups = st.tabs([
+            "Classificació d'Atac de la Lliga", 
+            "Classificació de Defensa de la Lliga", 
+            "Gràfic de Dispersió",
+            "Quintets Acumulats"
+        ])
         
         with tab_off:
             st.write("Classificació d'Eficiència de la Lliga (Mètriques Ofensives)")
@@ -362,10 +369,8 @@ elif view == "Tendències de la Lliga":
         with tab_chart:
             st.write("Gràfic d'Anàlisi Dinàmica de la Lliga")
             
-            # Merge offense and defense to get complete metrics
             league_df = offense_df.merge(defense_df, on="Team", suffixes=("_Off", "_Def"))
             
-            # Dictionary maps parsed cleanly to avoid inline multi-line lambda compile warnings
             x_labels = {
                 "OERcal_Off": "Ràting Ofensiu (OER)",
                 "eFG%_Off": "eFG% Ofensiu",
@@ -382,7 +387,6 @@ elif view == "Tendències de la Lliga":
                 "FTR_Def": "Ràtio de Tirs Lliures Defensiu (Rival FTR)"
             }
             
-            # Let the coaches select which metric to plot on X and Y
             col_scat1, col_scat2 = st.columns(2)
             with col_scat1:
                 x_metric = st.selectbox(
@@ -441,6 +445,37 @@ elif view == "Tendències de la Lliga":
             fig_scat.add_hline(y=mean_y, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Def")
                 
             st.plotly_chart(fig_scat, use_container_width=True)
+            
+        with tab_lineups:
+            # canvi: Nova visualització interactiva de quintets acumulats temporals (Fase 3)
+            scout_teams = sorted(list(offense_df["Team"].unique()))
+            selected_agg_team = st.selectbox("Selecciona l'Equip per analitzar els seus Quintets acumulats", scout_teams)
+            
+            # Executem l'escaneig dinàmic
+            agg_lineups = load_and_aggregate_season_lineups(PBP_DIR, selected_agg_team)
+            
+            if agg_lineups.empty:
+                st.info("No s'han trobat dades de quintets per a aquest equip en els fitxers Play-by-Play d'aquesta temporada.")
+            else:
+                lineup_cols = ["P1", "P2", "P3", "P4", "P5", "Lineup", "PTS_For", "PTS_Agn", "+/-", "FTM_For", "FTA_For", "FTM_Agn", "FTA_Agn", "FOULS_Cor", "FOULS_Dra", "TOV_For", "TOV_Agn"]
+                selected_lineup_cols = [c for c in lineup_cols if c in agg_lineups.columns]
+                
+                lineup_col_config = {}
+                for col in selected_lineup_cols:
+                    if col in ["P1", "P2", "P3", "P4", "P5"]:
+                        lineup_col_config[col] = st.column_config.TextColumn(col, width="medium")
+                    elif col == "Lineup":
+                        lineup_col_config[col] = st.column_config.TextColumn(col, width="large")
+                    else:
+                        lineup_col_config[col] = st.column_config.NumberColumn(col, width="small")
+                        
+                st.write(f"Rendiment Acumulat dels Quintets de **{selected_agg_team}** (Temporada Completa)")
+                st.dataframe(
+                    agg_lineups[selected_lineup_cols], 
+                    use_container_width=False,
+                    column_config=lineup_col_config,
+                    hide_index=True
+                )
 
 # ----------------- VIEW 3: PLAYER SHOOTING INDEX -----------------
 elif view == "Índex de Tir dels Jugadors":
