@@ -59,7 +59,7 @@ CB_BLUE = "#1f77b4"
 CB_ORANGE = "#ff7f0e"
 CB_NEUTRAL = "#4a4a4a"
 
-st.sidebar.title("🏀 Hub de l'Staff")
+st.sidebar.title("Analítica COPA CATALUNYA")
 
 # 1. Season Selector in Sidebar
 seasons = get_available_seasons(RAW_DIR)
@@ -86,13 +86,13 @@ if not AGG_FILE or not os.path.exists(AGG_FILE):
 
 # 3. View selector (Sidebar)
 view = st.sidebar.radio(
-    "Navega per les Vistes", 
-    ["Analitzador de Partits", "Tendències de la Lliga", "Índex de Tir dels Jugadors", "Scouting de Rivals"]
+    "Visualitzacions", 
+    ["Partits", "Acumulats Lliga", "Tirs Jugadors", "Scouting"]
 )
 
 # ----------------- VIEW 1: GAME ANALYZER -----------------
-if view == "Analitzador de Partits":
-    st.title(f"Analitzador de Partits ({selected_season.replace('_', ' ')})")
+if view == "Partits":
+    st.title(f"Partits ({selected_season.replace('_', ' ')})")
     
     if not BOX_DIR or not os.path.exists(BOX_DIR):
         st.info("No s'ha trobat la carpeta de boxscores. Comprova els noms de directori.")
@@ -327,8 +327,8 @@ if view == "Analitzador de Partits":
                 st.warning("No s'ha trobat cap fitxer Play-By-Play per a aquest partit. S'ha fet una cerca aproximada però no hi ha coincidències.")
 
 # ----------------- VIEW 2: LEAGUE & SEASON TRENDS -----------------
-elif view == "Tendències de la Lliga":
-    st.title(f"Tendències de la Lliga ({selected_season.replace('_', ' ')})")
+elif view == "Acumulats Lliga":
+    st.title(f"Acumulats Lliga ({selected_season.replace('_', ' ')})")
     
     # canvi: S'envien tant BOX_DIR com PBP_DIR per fer la cerca de Jornada en viu
     pbp_cache_key = get_dir_cache_key(BOX_DIR)
@@ -852,8 +852,8 @@ elif view == "Tendències de la Lliga":
                                 help=f"Cap dels dos jugadors a pista. Punts a favor: {both_off['PTS_For'].sum():.0f}, Punts en contra: {both_off['PTS_Agn'].sum():.0f}"
                             )
 # ----------------- VIEW 3: PLAYER SHOOTING INDEX -----------------
-elif view == "Índex de Tir dels Jugadors":
-    st.title(f"Índex de Tir dels Jugadors ({selected_season.replace('_', ' ')})")
+elif view == "Tirs Jugadors":
+    st.title(f"Tirs Jugadors ({selected_season.replace('_', ' ')})")
     
     if not AGG_FILE or not os.path.exists(AGG_FILE):
         st.info("No s'han trobat acumulats de lliga. Comprova els fitxers d'acumulats de la temporada.")
@@ -944,8 +944,8 @@ elif view == "Índex de Tir dels Jugadors":
         )
 
 # ----------------- VIEW 4: SCOUTING DE RIVALS -----------------
-elif view == "Scouting de Rivals":
-    st.title(f"Mòdul de Scouting de Rivals ({selected_season.replace('_', ' ')})")
+elif view == "Scouting":
+    st.title(f"Scouting ({selected_season.replace('_', ' ')})")
     
     if not AGG_FILE or not os.path.exists(AGG_FILE):
         st.info("No s'ha trobat el fitxer d'acumulats de lliga. Afegeix 'aggregate_season_latest.xlsx' a la seva carpeta.")
