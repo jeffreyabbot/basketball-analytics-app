@@ -566,12 +566,17 @@ elif view == "Tendències de la Lliga":
                             agg_lineups["Lineup"].str.contains(teammate, na=False)
                         ]
                         if not both_on.empty:
-                            # Càlcul de mètriques avançades de dades de la parella
                             o_efg, d_efg, to_p, to_pa, ro, ro_ag, rd, rd_ag = calculate_combo_stats_metrics(both_on)
+                            
+                            # canvi: Calculem de manera exacta el número de partits i trams jugats en comú
+                            partits_junts = int(both_on["Rival"].nunique()) if "Rival" in both_on.columns else 1
+                            trams_junts = int(len(both_on))
                             
                             teammate_stats.append({
                                 "Company": teammate,
                                 "+/- Acumulat": both_on["+/-"].sum(),
+                                "Partits": partits_junts,
+                                "Trams": trams_junts,
                                 "off eFG%": o_efg,
                                 "def eFG%": d_efg,
                                 "to%": to_p,
@@ -587,10 +592,12 @@ elif view == "Tendències de la Lliga":
                         
                         col_best, col_worst = st.columns(2)
                         
-                        # canvi: Nova configuració de columnes compacta de 10 columnes per a dades de l'staff
+                        # canvi: Nova configuració de columnes que afegeix Partits i Trams (stints) de volum
                         t_config = {
                             "Company": st.column_config.TextColumn("Company", width=240),
-                            "+/- Acumulat": st.column_config.NumberColumn("+/- Acum", width="small")
+                            "+/- Acumulat": st.column_config.NumberColumn("+/- Acum", width="small"),
+                            "Partits": st.column_config.NumberColumn("Partits", width="small"),
+                            "Trams": st.column_config.NumberColumn("Trams", width="small")
                         }
                         for col in ["off eFG%", "def eFG%", "to%", "to%ag"]:
                             t_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width="small")
