@@ -188,7 +188,7 @@ if view == "Analitzador de Partits":
                         plot_bgcolor="rgba(0,0,0,0)",
                         xaxis=dict(showgrid=False, range=factor_ranges[factor])
                     )
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=False)
 
             # --- Subsection 3: Dynamic Boxscores View ---
             st.markdown("---")
@@ -274,13 +274,13 @@ if view == "Analitzador de Partits":
                     
                     col_map1, col_map2 = st.columns(2)
                     with col_map1:
-                        st.plotly_chart(fig_vol, use_container_width=True)
+                        st.plotly_chart(fig_vol, use_container_width=False)
                     with col_map2:
-                        st.plotly_chart(fig_pps, use_container_width=True)
+                        st.plotly_chart(fig_pps, use_container_width=False)
                         
                     st.markdown("---")
                     st.write("Registre de Jugades (Registre de Temps)")
-                    st.dataframe(pbp_df[["quarter", "time", "text"]].dropna().head(100), height=500, use_container_width=True)
+                    st.dataframe(pbp_df[["quarter", "time", "text"]].dropna().head(100), height=500, use_container_width=False)
                     
                 with lineup_tab:
                     # Filtre d'equip obligatori per a la taula de quintets (lineups)
@@ -345,7 +345,7 @@ elif view == "Tendències de la Lliga":
             st.write("Classificació d'Eficiència de la Lliga (Mètriques Defensives)")
             st.dataframe(
                 defense_df.sort_values("DERcal", ascending=True).style.format(precision=2), 
-                use_container_width=True, 
+                use_container_width=False, 
                 height=600,
                 column_config=league_col_config
             )
@@ -435,7 +435,7 @@ elif view == "Tendències de la Lliga":
             fig_scat.add_vline(x=mean_x, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Atac")
             fig_scat.add_hline(y=mean_y, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Def")
                 
-            st.plotly_chart(fig_scat, use_container_width=True)
+            st.plotly_chart(fig_scat, use_container_width=False)
 
 # ----------------- VIEW 3: PLAYER SHOOTING INDEX -----------------
 elif view == "Índex de Tir dels Jugadors":
