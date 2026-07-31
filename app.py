@@ -522,8 +522,8 @@ elif view == "Scouting de Rivals":
             off_ranks["Pace_Rank"] = off_ranks["POSScal"].rank(ascending=False, method="min")
             off_ranks["TOV_Rank"] = off_ranks["TOV%cal"].rank(ascending=True, method="min") # Lower is better
             
-            # Defensive Rankings (DER, Opp eFG%, Opp ORB%, Opp FTR lower is better; Opp TO% higher is better)
-            def_ranks["DER_Rank"] = def_ranks["DERcal"].rank(ascending=True, method="min")
+            # Defensive Rankings (canvi: El ràting defensiu real es calcula sobre OERcal de la pestanya de defensa, lower is better)
+            def_ranks["DER_Rank"] = def_ranks["OERcal"].rank(ascending=True, method="min")
             def_ranks["eFG_Def_Rank"] = def_ranks["eFG%"].rank(ascending=True, method="min")
             def_ranks["TOV_Def_Rank"] = def_ranks["TOV%cal"].rank(ascending=False, method="min")
             def_ranks["ORB_Def_Rank"] = def_ranks["ORB%cal"].rank(ascending=True, method="min")
@@ -535,13 +535,14 @@ elif view == "Scouting de Rivals":
                 t_def = def_ranks[def_ranks["Team"] == team_name].iloc[0]
                 return {
                     "OER": (t_off["OERcal"], int(t_off["OER_Rank"])),
-                    "DER": (t_def["DERcal"], int(t_def["DER_Rank"])),
+                    # canvi: Pull del DER real usant t_def["OERcal"] (OER del rival)
+                    "DER": (t_def["OERcal"], int(t_def["DER_Rank"])),
                     "Pace": (t_off["POSScal"], int(t_off["Pace_Rank"])),
                     "eFG": (t_off["eFG%"], int(t_off["eFG_Rank"])),
                     "TOV": (t_off["TOV%cal"], int(t_off["TOV_Rank"])),
                     "ORB": (t_off["ORB%cal"], int(t_off["ORB_Rank"])),
                     "FTR": (t_off["FTR"], int(t_off["FTR_Rank"])),
-                    # canvi: Mapeig dels 4 factors defensius reals de l'aggregate de lliga (Rival)
+                    # Defensive 4 Factors
                     "eFG_Def": (t_def["eFG%"], int(t_def["eFG_Def_Rank"])),
                     "TOV_Def": (t_def["TOV%cal"], int(t_def["TOV_Def_Rank"])),
                     "ORB_Def": (t_def["ORB%cal"], int(t_def["ORB_Def_Rank"])),
