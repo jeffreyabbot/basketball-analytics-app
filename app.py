@@ -296,13 +296,13 @@ if view == "Analitzador de Partits":
                         if team_col is not None:
                             filtered_lineups = filtered_lineups[filtered_lineups[team_col] == selected_lineup_team]
                     
-                    # canvi: Auto-ajust compacte del llistat de quintets
+                    # canvi: Mètode antibales basat en tipus de dades de Pandas per evitar triangles vermells
                     lineup_col_config = {}
                     for col in filtered_lineups.columns:
-                        if "Oncourt" in str(col) or "Player" in str(col) or filtered_lineups[col].dtype == object:
-                            lineup_col_config[col] = st.column_config.TextColumn(col, width="large")
-                        else:
+                        if pd.api.types.is_numeric_dtype(filtered_lineups[col]):
                             lineup_col_config[col] = st.column_config.NumberColumn(col, width="small")
+                        else:
+                            lineup_col_config[col] = st.column_config.TextColumn(col, width="large")
                             
                     st.write("Rendiment dels Quintets a la Pista")
                     st.dataframe(
