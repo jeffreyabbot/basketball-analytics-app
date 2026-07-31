@@ -19,7 +19,7 @@ from utils.data_loader import (
     parse_time_to_minutes,
     tag_shot_team
 )
-from utils.court_visualizer import draw_colorblind_shot_charts
+from utils.court_visualizer import draw_boxscore_zone_charts
 
 # Page config & Theme (Must be first)
 st.set_page_config(page_title="Anàlisi de Bàsquet - Staff", layout="wide")
@@ -135,10 +135,7 @@ if view == "Analitzador de Partits":
             
             # Calculate standard regulation/OT game duration
             estimated_game_mins = estimate_game_duration(t1_players, t2_players, pbp_df_param)
-            
-            # Perform player minute normalization ( makes player sum perfectly match 160, 180, 200, 225, etc.)
-            t1_players = normalize_and_format_player_times(t1_players, estimated_game_mins * 5)
-            t2_players = normalize_and_format_player_times(t2_players, estimated_game_mins * 5)
+        
             
             # --- Subsection 1: Advanced Metrics (OER/DER/PACE) ---
             st.subheader("Ràtings d'Eficiència de l'Equip")
@@ -264,8 +261,16 @@ if view == "Analitzador de Partits":
                     if selected_team != "Tots els equips":
                         pbp_df_filtered = pbp_df_filtered[pbp_df_filtered["Shot_Team"] == selected_team]
                         
-                    # Renders side-by-side shot charts amb filtre d'equip aplicat
-                    fig_vol, fig_pps = draw_colorblind_shot_charts(pbp_df_filtered, selected_player=shot_player)
+                    # canvi: Generació directa dels ràdars de barres des del Boxscore en lloc del PBP
+                    fig_vol, fig_pps = draw_boxscore_zone_charts(
+                        team_summary=team_summary,
+                        t1_players=t1_players,
+                        t2_players=t2_players,
+                        t1_name=t1_name,
+                        t2_name=t2_name,
+                        selected_team=selected_team,
+                        selected_player=shot_player
+                    )
                     
                     col_map1, col_map2 = st.columns(2)
                     with col_map1:
