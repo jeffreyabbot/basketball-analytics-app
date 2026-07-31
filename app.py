@@ -628,7 +628,19 @@ elif view == "Scouting de Rivals":
                     f"Rànquing ({team_B})": str_B
                 })
                 
-            st.table(pd.DataFrame(mirror_data))
+            # canvi: Convertit a st.dataframe compacte amb amplades fixes i index ocult
+            mirror_df = pd.DataFrame(mirror_data)
+            mirror_col_config = {
+                f"Rànquing ({team_A})": st.column_config.TextColumn(f"Rànquing ({team_A})", width=220),
+                "Mètrica de Lliga": st.column_config.TextColumn("Mètrica de Lliga", width=260),
+                f"Rànquing ({team_B})": st.column_config.TextColumn(f"Rànquing ({team_B})", width=220)
+            }
+            st.dataframe(
+                mirror_df,
+                use_container_width=False,
+                column_config=mirror_col_config,
+                hide_index=True
+            )
             
             st.markdown("---")
             st.subheader("Anàlisi Comparatiu de Jugadors (Volum i PPS per Trams)")
