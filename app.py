@@ -17,7 +17,8 @@ from utils.data_loader import (
     normalize_and_format_player_times,
     parse_time_to_minutes,
     tag_shot_team,
-    load_and_aggregate_season_lineups
+    load_and_aggregate_season_lineups,
+    get_dir_cache_key
 )
 from utils.court_visualizer import draw_boxscore_zone_charts
 
@@ -447,18 +448,30 @@ elif view == "Tendències de la Lliga":
             st.plotly_chart(fig_scat, use_container_width=True)
             
         with tab_lineups:
-            # canvi: Nova visualització interactiva de quintets acumulats temporals (Fase 3)
             scout_teams = sorted(list(offense_df["Team"].unique()))
             selected_agg_team = st.selectbox("Selecciona l'Equip per analitzar els seus Quintets acumulats", scout_teams)
             
-            # Executem l'escaneig dinàmic
-            agg_lineups = load_and_aggregate_season_lineups(PBP_DIR, selected_agg_team)
+            # canvi: Invalidació intel·ligent de memòria cau basada en temps de modificació
+            pbp_cache_key = get_dir_cache_key(PBP_DIR)
+            
+            # Carreguem els quintets de lliga de manera instantània des de la cache
+            agg_lineups = load_and_aggregate_season_lineups(PBP_DIR, selected_agg_team, pbp_cache_key)
             
             if agg_lineups.empty:
                 st.info("No s'han trobat dades de quintets per a aquest equip en els fitxers Play-by-Play d'aquesta temporada.")
             else:
-                lineup_cols = ["P1", "P2", "P3", "P4", "P5", "Lineup", "PTS_For", "PTS_Agn", "+/-", "FTM_For", "FTA_For", "FTM_Agn", "FTA_Agn", "FOULS_Cor", "FOULS_Dra", "TOV_For", "TOV_Agn"]
+                # Columnes configurades incloent rebots (RO/RD), volums i % de 2P i 3P (Team i Rival)
+                lineup_cols = [
+                    "P1", "P2", "P3", "P4", "P5", "Lineup", "PTS_For", "PTS_Agn", "+/-", 
+                    "RO_For", "RD_For", "RO_Agn", "RD_Agn",
+                    "2PA_For", "2P%_For", "2PA_Agn", "2P%_Agn",
+                    "3PA_For", "3P%_For", "3PA_Agn", "3P%_Agn",
+                    "TOV_For", "TOV_Agn"
+                ]
                 selected_lineup_cols = [c for c in lineup_cols if c in agg_lineups.columns]
+                
+                # Formatadors compactes de percentatges
+                pct_cols = [c for c in selected_lineup_cols if "%" in c]
                 
                 lineup_col_config = {}
                 for col in selected_lineup_cols:
@@ -466,6 +479,8 @@ elif view == "Tendències de la Lliga":
                         lineup_col_config[col] = st.column_config.TextColumn(col, width="medium")
                     elif col == "Lineup":
                         lineup_col_config[col] = st.column_config.TextColumn(col, width="large")
+                    elif col in pct_cols:
+                        lineup_col_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width="small")
                     else:
                         lineup_col_config[col] = st.column_config.NumberColumn(col, width="small")
                         
@@ -476,6 +491,65 @@ elif view == "Tendències de la Lliga":
                     column_config=lineup_col_config,
                     hide_index=True
                 )
+                
+                # canvi: ANALITZADOR CREUAT DE COMBINACIONS DE JUGADORS (On Court vs Off Court)
+                st.markdown("---")
+                st.subheader("Anàlisi Creuat de Parelles de Jugadors (Coincidència a Pista)")
+                
+                # Extraiem la llista de jugadors únics del roster de l'equip
+                roster = set()
+                for c in ["P1", "P2", "P3", "P4", "P5"]:
+                    if c in agg_lineups.columns:
+                        roster.update(agg_lineups[c].dropna().unique())
+                roster_list = sorted(list(roster))
+                
+                col_pX, col_pY = st.columns(2)
+                with col_pX:
+                    player_X = st.selectbox("Selecciona el Jugador X", roster_list, index=0)
+                with col_pY:
+                    player_Y = st.selectbox("Selecciona el Jugador Y", roster_list, index=min(1, len(roster_list)-1))
+                    
+                if player_X == player_Y:
+                    st.warning("Selecciona dos jugadors diferents per poder calcular la coincidència creuada.")
+                else:
+                    # Divisió matemàtica estricta dels quintets temporals en els 4 estats possibles
+                    both_on = agg_lineups[agg_lineups["Lineup"].str.contains(player_X, na=False) & agg_lineups["Lineup"].str.contains(player_Y, na=False)]
+                    only_X = agg_lineups[agg_lineups["Lineup"].str.contains(player_X, na=False) & ~agg_lineups["Lineup"].str.contains(player_Y, na=False)]
+                    only_Y = agg_lineups[~agg_lineups["Lineup"].str.contains(player_X, na=False) & agg_lineups["Lineup"].str.contains(player_Y, na=False)]
+                    both_off = agg_lineups[~agg_lineups["Lineup"].str.contains(player_X, na=False) & ~agg_lineups["Lineup"].str.contains(player_Y, na=False)]
+                    
+                    st.write(f"Rendiment de l'equip segons la presència de **{player_X}** i **{player_Y}**:")
+                    
+                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                    
+                    with col_m1:
+                        plus_minus = both_on["+/-"].sum() if not both_on.empty else 0.0
+                        st.metric(
+                            label="Junts a Pista", 
+                            value=f"{plus_minus:+.1f}",
+                            help=f"Ambdós jugadors jugant junts. Punts a favor: {both_on['PTS_For'].sum():.0f}, Punts en contra: {both_on['PTS_Agn'].sum():.0f}"
+                        )
+                    with col_m2:
+                        plus_minus = only_X["+/-"].sum() if not only_X.empty else 0.0
+                        st.metric(
+                            label=f"Només {player_X}", 
+                            value=f"{plus_minus:+.1f}",
+                            help=f"Jugador X jugant sense Jugador Y. Punts a favor: {only_X['PTS_For'].sum():.0f}, Punts en contra: {only_X['PTS_Agn'].sum():.0f}"
+                        )
+                    with col_m3:
+                        plus_minus = only_Y["+/-"].sum() if not only_Y.empty else 0.0
+                        st.metric(
+                            label=f"Només {player_Y}", 
+                            value=f"{plus_minus:+.1f}",
+                            help=f"Jugador Y jugant sense Jugador X. Punts a favor: {only_Y['PTS_For'].sum():.0f}, Punts en contra: {only_Y['PTS_Agn'].sum():.0f}"
+                        )
+                    with col_m4:
+                        plus_minus = both_off["+/-"].sum() if not both_off.empty else 0.0
+                        st.metric(
+                            label="Ambdós a la Banqueta", 
+                            value=f"{plus_minus:+.1f}",
+                            help=f"Cap dels dos jugadors a pista. Punts a favor: {both_off['PTS_For'].sum():.0f}, Punts en contra: {both_off['PTS_Agn'].sum():.0f}"
+                        )
 
 # ----------------- VIEW 3: PLAYER SHOOTING INDEX -----------------
 elif view == "Índex de Tir dels Jugadors":

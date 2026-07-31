@@ -4,6 +4,7 @@ import glob
 import os
 import re
 import datetime
+import streamlit as st
 
 def resolve_path_case_insensitive(base_dir, *subdirs_and_file):
     """
@@ -446,10 +447,23 @@ def tag_shot_team(pbp_df, t1_name, t2_name):
     pbp_df.loc[team_b_mask, "Shot_Team"] = t2_name
     
     return pbp_df
-def load_and_aggregate_season_lineups(pbp_dir, selected_team):
+def get_dir_cache_key(directory):
+    """Calculates a unique cache key based on the count and modification times of files."""
+    if not directory or not os.path.exists(directory):
+        return 0
+    try:
+        files = [os.path.join(directory, f) for f in os.listdir(directory) if f.lower().endswith((".xlsx", ".xls"))]
+        if not files:
+            return 0
+        return sum(os.path.getmtime(f) for f in files) + len(files)
+    except OSError:
+        return len(os.listdir(directory))
+
+@st.cache_data
+def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
     """
-    Scans the PBP directory, opens all PBP files, extracts the lineups tab,
-    and aggregates lineup statistics for the selected team across the entire season.
+    Scans PBP directory, aggregates lineups, and calculates advanced stats 
+    (Rebounds, 2P/3P Volumes & Percentages) with dynamic caching.
     """
     if not pbp_dir or not os.path.exists(pbp_dir):
         return pd.DataFrame()
@@ -466,7 +480,6 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team):
                 continue
             df_lineups = pd.read_excel(xls, sheet_name=2)
             
-            # Find team column dynamically
             team_col = None
             for col in df_lineups.columns:
                 if df_lineups[col].astype(str).str.contains(selected_team, na=False).any():
@@ -474,7 +487,6 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team):
                     break
                     
             if team_col is not None:
-                # Filter only rows for the selected team
                 df_team = df_lineups[df_lineups[team_col] == selected_team].copy()
                 all_lineups.append(df_team)
         except Exception:
@@ -486,7 +498,18 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team):
     combined_df = pd.concat(all_lineups, ignore_index=True)
     combined_df.columns = combined_df.columns.str.strip()
     
-    # Standardize player names order in Lineup string to ensure duplicates match
+    # Map synonyms for Rebounds (RO/RD) defensively
+    for col in combined_df.columns:
+        col_lower = col.lower()
+        if "oreb_for" in col_lower or "orb_for" in col_lower:
+            combined_df["RO_For"] = combined_df[col]
+        elif "dreb_for" in col_lower or "drb_for" in col_lower:
+            combined_df["RD_For"] = combined_df[col]
+        elif "oreb_agn" in col_lower or "orb_agn" in col_lower:
+            combined_df["RO_Agn"] = combined_df[col]
+        elif "dreb_agn" in col_lower or "drb_agn" in col_lower:
+            combined_df["RD_Agn"] = combined_df[col]
+
     if "Lineup" not in combined_df.columns:
         if all(c in combined_df.columns for c in ["P1", "P2", "P3", "P4", "P5"]):
             combined_df["Lineup"] = combined_df[["P1", "P2", "P3", "P4", "P5"]].apply(
@@ -495,8 +518,14 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team):
         else:
             return pd.DataFrame()
             
-    # Numeric columns to aggregate
-    numeric_cols = ["PTS_For", "PTS_Agn", "+/-", "FTM_For", "FTA_For", "FTM_Agn", "FTA_Agn", "FOULS_Cor", "FOULS_Dra", "TOV_For", "TOV_Agn"]
+    # Target columns to aggregate
+    numeric_cols = [
+        "PTS_For", "PTS_Agn", "+/-", "FTM_For", "FTA_For", "FTM_Agn", "FTA_Agn", 
+        "FOULS_Cor", "FOULS_Dra", "TOV_For", "TOV_Agn",
+        "RO_For", "RD_For", "RO_Agn", "RD_Agn",
+        "2PA_For", "2PM_For", "2PA_Agn", "2PM_Agn",
+        "3PA_For", "3PM_For", "3PA_Agn", "3PM_Agn"
+    ]
     available_numeric = [c for c in numeric_cols if c in combined_df.columns]
     
     for c in available_numeric:
@@ -507,9 +536,24 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team):
         if c in combined_df.columns:
             agg_dict[c] = "first"
             
-    # Group by standardized Lineup string
     aggregated = combined_df.groupby("Lineup").agg(agg_dict).reset_index()
     
+    # Calculate percentages dynamically on aggregated columns
+    for suffix in ["_For", "_Agn"]:
+        # 2P%
+        fga_2p = f"2PA{suffix}"
+        fgm_2p = f"2PM{suffix}"
+        pct_2p = f"2P%{suffix}"
+        if fga_2p in aggregated.columns and fgm_2p in aggregated.columns:
+            aggregated[pct_2p] = (aggregated[fgm_2p] / aggregated[fga_2p] * 100.0).fillna(0.0)
+            
+        # 3P%
+        fga_3p = f"3PA{suffix}"
+        fgm_3p = f"3PM{suffix}"
+        pct_3p = f"3P%{suffix}"
+        if fga_3p in aggregated.columns and fgm_3p in aggregated.columns:
+            aggregated[pct_3p] = (aggregated[fgm_3p] / aggregated[fga_3p] * 100.0).fillna(0.0)
+            
     if "+/-" in aggregated.columns:
         aggregated = aggregated.sort_values("+/-", ascending=False)
         
