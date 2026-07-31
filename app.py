@@ -99,17 +99,23 @@ if view == "Analitzador de Partits":
         if not games:
             st.info("No s'han carregat partits. Afegeix els teus fitxers de boxscore/pbp de la setmana.")
         else:
-            # canvi: Mètode definitiu de selector de partit en dos passos (Filtre d'equips permanent)
-            all_game_teams = set()
-            for g in games:
-                if " vs " in g["name"]:
-                    parts = g["name"].split(" vs ")
-                    all_game_teams.add(parts[0].strip())
-                    all_game_teams.add(parts[1].strip())
+            # canvi: Mètode definitiu utilitzant els noms de la lliga com a origen per filtrar els partits
+            if os.path.exists(AGG_FILE):
+                offense_df, _, _ = parse_aggregate(AGG_FILE)
+                teams_list = sorted(list(offense_df["Team"].unique()))
+            else:
+                # Fallback de seguretat si no es troba l'aggregate
+                all_game_teams = set()
+                for g in games:
+                    if " vs " in g["name"]:
+                        parts = g["name"].split(" vs ")
+                        all_game_teams.add(parts[0].strip())
+                        all_game_teams.add(parts[1].strip())
+                teams_list = sorted(list(all_game_teams))
             
-            filter_team_game = st.selectbox("1. Filtra els partits per equip", sorted(list(all_game_teams)))
+            filter_team_game = st.selectbox("1. Filtra els partits per equip", teams_list)
             
-            # Filtrem els partits per mostrar estrictament els que juga l'equip triat
+            # Filtrem strictly els partits d'aquest equip seleccionat
             filtered_games = [g for g in games if filter_team_game.lower() in g["name"].lower()]
                 
             selected_game = st.selectbox("2. Selecciona el Partit", filtered_games, format_func=lambda g: g["name"])
@@ -215,13 +221,21 @@ if view == "Analitzador de Partits":
                     else:
                         selected_cols = [c for c in zone_cols if c in players_df.columns]
                         
-                    # canvi: Forcem amplada gran de columna per a JUGADOR per evitar talls de noms llargs
+                    # canvi: Disseny dinàmic de columnes que manté JUGADOR gran i encongeix les numèriques
+                    col_config = {
+                        "JUGADOR": st.column_config.TextColumn("JUGADOR", width="large")
+                    }
+                    for col in selected_cols:
+                        if col != "JUGADOR":
+                            if col == "TIME":
+                                col_config[col] = st.column_config.TextColumn(col, width="small")
+                            else:
+                                col_config[col] = st.column_config.NumberColumn(col, width="small")
+                                
                     st.dataframe(
                         players_df[selected_cols].style.format(precision=2), 
                         use_container_width=True,
-                        column_config={
-                            "JUGADOR": st.column_config.TextColumn("JUGADOR", width="large")
-                        }
+                        column_config=col_config
                     )
                 
             # --- Subsection 4: PBP-Specific Tabs ---
@@ -500,15 +514,20 @@ elif view == "Scouting de Rivals":
             off_ranks = offense_df.copy()
             def_ranks = defense_df.copy()
             
-            # OER, eFG%, ORB%, FTR, POSScal rànquing alt és millor (descending)
-            # DER, TOV% cal rànquing baix és millor (ascending)
+           # Offensive Rankings (Higher is better)
             off_ranks["OER_Rank"] = off_ranks["OERcal"].rank(ascending=False, method="min")
             off_ranks["eFG_Rank"] = off_ranks["eFG%"].rank(ascending=False, method="min")
             off_ranks["ORB_Rank"] = off_ranks["ORB%cal"].rank(ascending=False, method="min")
             off_ranks["FTR_Rank"] = off_ranks["FTR"].rank(ascending=False, method="min")
             off_ranks["Pace_Rank"] = off_ranks["POSScal"].rank(ascending=False, method="min")
-            off_ranks["TOV_Rank"] = off_ranks["TOV%cal"].rank(ascending=True, method="min")
+            off_ranks["TOV_Rank"] = off_ranks["TOV%cal"].rank(ascending=True, method="min") # Lower is better
+            
+            # Defensive Rankings (DER, Opp eFG%, Opp ORB%, Opp FTR lower is better; Opp TO% higher is better)
             def_ranks["DER_Rank"] = def_ranks["DERcal"].rank(ascending=True, method="min")
+            def_ranks["eFG_Def_Rank"] = def_ranks["eFG%"].rank(ascending=True, method="min")
+            def_ranks["TOV_Def_Rank"] = def_ranks["TOV%cal"].rank(ascending=False, method="min")
+            def_ranks["ORB_Def_Rank"] = def_ranks["ORB%cal"].rank(ascending=True, method="min")
+            def_ranks["FTR_Def_Rank"] = def_ranks["FTR"].rank(ascending=True, method="min")
             
             # Cerca de dades reals i rànquings per a tots dos equips
             def get_team_scout_stats(team_name):
@@ -521,29 +540,39 @@ elif view == "Scouting de Rivals":
                     "eFG": (t_off["eFG%"], int(t_off["eFG_Rank"])),
                     "TOV": (t_off["TOV%cal"], int(t_off["TOV_Rank"])),
                     "ORB": (t_off["ORB%cal"], int(t_off["ORB_Rank"])),
-                    "FTR": (t_off["FTR"], int(t_off["FTR_Rank"]))
+                    "FTR": (t_off["FTR"], int(t_off["FTR_Rank"])),
+                    # canvi: Mapeig dels 4 factors defensius reals de l'aggregate de lliga (Rival)
+                    "eFG_Def": (t_def["eFG%"], int(t_def["eFG_Def_Rank"])),
+                    "TOV_Def": (t_def["TOV%cal"], int(t_def["TOV_Def_Rank"])),
+                    "ORB_Def": (t_def["ORB%cal"], int(t_def["ORB_Def_Rank"])),
+                    "FTR_Def": (t_def["FTR"], int(t_def["FTR_Def_Rank"]))
                 }
                 
             stats_A = get_team_scout_stats(team_A)
             stats_B = get_team_scout_stats(team_B)
             
-            # Taula en mirall d'alta qualitat estètica (Mirror Rankings Table)
+            # canvi: Nova taula en mirall afegint les mètriques dels 4 Factors Defensius
             mirror_data = []
             metrics_mapping = [
                 ("OER", "Ràting Ofensiu (OER)", "{:.2f}"),
                 ("DER", "Ràting Defensiu (DER)", "{:.2f}"),
                 ("Pace", "Possessions (Pace)", "{:.1f}"),
                 ("eFG", "eFG% Ofensiu", "{:.2f}%"),
-                ("TOV", "Pèrdues % (TO%)", "{:.2f}%"),
+                ("eFG_Def", "eFG% Defensiu (Rival eFG%)", "{:.2f}%"),
+                ("TOV", "Pèrdues Ofensiu % (TO%)", "{:.2f}%"),
+                ("TOV_Def", "Pèrdues Defensiu % (Forçades)", "{:.2f}%"),
                 ("ORB", "Rebot Ofensiu % (ORB%)", "{:.2f}%"),
-                ("FTR", "Ràtio de Tirs Lliures (FTR)", "{:.2f}")
+                ("ORB_Def", "Rebot Defensiu % (Rival ORB%)", "{:.2f}%"),
+                ("FTR", "Ràtio de Tirs Lliures Ofensiu (FTR)", "{:.2f}"),
+                ("FTR_Def", "Ràtio de Tirs Lliures Defensiu (Rival FTR)", "{:.2f}")
             ]
             
-            # Helper de numeració en català per als rànquings
+            # Helper de numeració en català per als rànquings corregit
             def cat_rank(num):
-                if num == 1: return "1r"
-                elif num == 2: return "2n"
-                elif num == 3: return "3r"
+                if num == 1: return "1er"
+                elif num == 2: return "2on"
+                elif num == 3: return "3er"
+                elif num == 4: return "4rt"
                 else: return f"{num}è"
                 
             for key, name, fmt in metrics_mapping:
