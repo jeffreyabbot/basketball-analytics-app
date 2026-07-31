@@ -2,7 +2,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-import plotly.colors as pcolors
 
 def parse_coordinate(val):
     """Safely parses coordinates and handles European comma decimal notations."""
@@ -13,32 +12,6 @@ def parse_coordinate(val):
         return float(val_str)
     except ValueError:
         return None
-
-def get_color_from_scale(val, min_val, max_val, scale_name="Viridis"):
-    """
-    Returns an rgba string for a value mapped to a named Plotly scale with 0.45 opacity.
-    """
-    if max_val == min_val:
-        percent = 0.5
-    else:
-        percent = (val - min_val) / (max_val - min_val)
-    percent = max(0.0, min(1.0, percent))
-    
-    scale = getattr(pcolors.sequential, scale_name, pcolors.sequential.Viridis)
-    n_colors = len(scale)
-    idx = percent * (n_colors - 1)
-    idx_low = int(np.floor(idx))
-    idx_high = int(np.ceil(idx))
-    
-    c_low = pcolors.hex_to_rgb(scale[idx_low]) if scale[idx_low].startswith("#") else pcolors.unlabel_rgb(scale[idx_low])
-    c_high = pcolors.hex_to_rgb(scale[idx_high]) if scale[idx_high].startswith("#") else pcolors.unlabel_rgb(scale[idx_high])
-    
-    weight = idx - idx_low
-    r = int(c_low[0] + (c_high[0] - c_low[0]) * weight)
-    g = int(c_low[1] + (c_high[1] - c_low[1]) * weight)
-    b = int(c_low[2] + (c_high[2] - c_low[2]) * weight)
-    
-    return f"rgba({r},{g},{b},0.45)"
 
 def classify_zone_by_coords(x, y):
     """
@@ -74,7 +47,6 @@ def get_zone_stats(pbp_df, selected_player=None):
     else:
         df = pbp_df.copy()
         
-    # Parse coordinates first to allow coordinate fallback
     df["Parsed_X"] = df["Shot_X"].apply(parse_coordinate)
     df["Parsed_Y"] = df["Shot_Y"].apply(parse_coordinate)
     df = df[df["Parsed_X"].notna() & df["Parsed_Y"].notna()].copy()
@@ -102,147 +74,89 @@ def get_zone_stats(pbp_df, selected_player=None):
 
 def draw_colorblind_shot_charts(pbp_df, selected_player=None):
     """
-    Renders two side-by-side shot charts on a side-facing FIBA half-court.
-    Background zones are mathematically disjoint to prevent tooltip overlaps.
+    Renders two side-by-side analytical horizontal bar charts of the 5 FIBA zones:
+    1. Volume Chart (Attempts in Zone)
+    2. PPS Chart (Points Per Shot in Zone)
     """
     df, stats_dict = get_zone_stats(pbp_df, selected_player)
     
     st_player_label = "Tots" if not selected_player or selected_player == "All" else selected_player
     
+    # Empty state fallback
     if df.empty:
-        fig_vol = go.Figure()
-        fig_vol.add_annotation(text="No s'han trobat coordenades de tir per a aquesta selecció", showarrow=False, font=dict(size=14))
-        fig_vol.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), height=400)
-        return fig_vol, fig_vol
+        fig_empty = go.Figure()
+        fig_empty.add_annotation(text="No s'han trobat llançaments per a aquesta selecció", showarrow=False, font=dict(size=14))
+        fig_empty.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), height=350)
+        return fig_empty, fig_empty
 
-    # Programmatic FIBA side-court arc points (R=22.15, hoop centered lateral at Y=25)
-    theta_limit = np.arcsin(22.0 / 22.15)
-    arc_angles = np.linspace(-theta_limit, theta_limit, 100)
-    arc_x = 5.25 + 22.15 * np.cos(arc_angles)
-    arc_y = 25.0 + 22.15 * np.sin(arc_angles)
+    # Ordered list from closest-to-rim to furthest-from-rim
+    standard_zones = ["Rim", "Paint", "Mid-Range", "Corner 3", "Above the Break 3"]
     
-    hoop_angles = np.linspace(0, 2*np.pi, 50)
-    hoop_x = 5.25 + 0.75 * np.cos(hoop_angles)
-    hoop_y = 25.0 + 0.75 * np.sin(hoop_angles)
-    
-    ft_angles = np.linspace(-np.pi/2, np.pi/2, 50)
-    ft_x = 19.0 + 6.0 * np.cos(ft_angles)
-    ft_y = 25.0 + 6.0 * np.sin(ft_angles)
-
-    volumes = [stats_dict.get(z, {}).get("Attempts", 0) for z in stats_dict]
-    pps_values = [stats_dict.get(z, {}).get("PPS", 0.0) for z in stats_dict]
-    
-    min_vol, max_vol = min(volumes or [0]), max(volumes or [1])
-    min_pps, max_pps = min(pps_values or [0.0]), max(pps_values or [1.0])
-
-    # Disjoint polygon layout (Corner 3 width reduced to X=9.8 matching FIBA; ATB3 base starts at X=9.8)
-    zone_polygons = {
-        "Corner 3": [
-            {"x": [0, 9.8, 9.8, 0, 0], "y": [-3, -3, 3, 3, -3]},      # Bottom Corner (X reduït a 9.8)
-            {"x": [0, 9.8, 9.8, 0, 0], "y": [47, 47, 53, 53, 47]}     # Top Corner (X reduït a 9.8)
-        ],
-        "Above the Break 3": [
-            # ATB3 base starts at X=9.8, eliminating overlaps with Corner 3 on tooltip hover
-            {"x": [9.8, 47, 47, 9.8, 9.8] + list(arc_x[::-1]) + [9.8], 
-             "y": [-3, -3, 53, 53, 47] + list(arc_y[::-1]) + [-3]}
-        ],
-        "Mid-Range": [
-            {"x": [0] + list(arc_x) + [0, 0], "y": [3] + list(arc_y) + [47, 3]}
-        ],
-        "Paint": [
-            {"x": [0, 19, 19, 0, 0], "y": [17, 17, 33, 33, 17]}
-        ],
-        "Rim": [
-            {"x": list(5.25 + 4.1 * np.cos(hoop_angles)), "y": list(25.0 + 4.1 * np.sin(hoop_angles))}
-        ]
+    # Catalan display translation labels
+    cat_labels = {
+        "Rim": "A prop del cercle (Rim)",
+        "Paint": "Pintura (Paint)",
+        "Mid-Range": "Mitjana distància (MR)",
+        "Corner 3": "Triple cantonada (Corner 3)",
+        "Above the Break 3": "Triple frontal (ATB3)"
     }
+    
+    attempts = []
+    pps_vals = []
+    labels_display = []
+    
+    for zone in standard_zones:
+        stats = stats_dict.get(zone, {"Attempts": 0, "PPS": 0.0})
+        attempts.append(stats["Attempts"])
+        pps_vals.append(stats["PPS"])
+        labels_display.append(cat_labels[zone])
 
-    figs = []
-    for metric_name, min_v, max_v, scale in [("Attempts", min_vol, max_vol, "Viridis"), ("PPS", min_pps, max_pps, "Cividis")]:
-        fig = go.Figure()
-        
-        # 1. Draw Filled Background Polygons (Choropleth Background)
-        for zone_name, polys in zone_polygons.items():
-            val = stats_dict.get(zone_name, {}).get(metric_name, 0.0)
-            color_str = get_color_from_scale(val, min_v, max_v, scale)
-            
-            for poly in polys:
-                fig.add_trace(go.Scatter(
-                    x=poly["x"],
-                    y=poly["y"],
-                    fill="toself",
-                    fillcolor=color_str,
-                    line=dict(color="rgba(0,0,0,0)"),
-                    mode="lines",
-                    hoverinfo="text",
-                    text=f"Zona: {zone_name}<br>Intents: {stats_dict.get(zone_name, {}).get('Attempts', 0)}<br>PPS: {stats_dict.get(zone_name, {}).get('PPS', 0.0):.2f}",
-                    showlegend=False
-                ))
-
-        # 2. Draw Official FIBA Court Lines on top of colors
-        court_lines = [
-            go.Scatter(x=[0, 47, 47, 0, 0], y=[0, 0, 50, 50, 0], mode="lines", line=dict(color="darkgray", width=1.5), showlegend=False),
-            go.Scatter(x=[0, 19, 19, 0], y=[17, 17, 33, 33], mode="lines", line=dict(color="darkgray", width=1.5), showlegend=False),
-            go.Scatter(x=ft_x, y=ft_y, mode="lines", line=dict(color="darkgray", width=1.5), showlegend=False),
-            go.Scatter(x=[4, 4], y=[22, 28], mode="lines", line=dict(color="darkgray", width=2.5), showlegend=False),
-            go.Scatter(x=hoop_x, y=hoop_y, mode="lines", line=dict(color="darkgray", width=2), showlegend=False),
-            go.Scatter(x=[0.0] + list(arc_x) + [0.0], y=[3.0] + list(arc_y) + [47.0], mode="lines", line=dict(color="darkgray", width=1.5), showlegend=False)
-        ]
-        for line in court_lines:
-            fig.add_trace(line)
-
-        # 3. Plot Individual Shots (Encistellats vs Errats)
-        df["IsMade"] = df["Play_Result"].apply(lambda r: "Encistellats" if "Missed" not in str(r) else "Errats")
-        
-        for result, color, symbol in [("Encistellats", "#2ca02c", "circle"), ("Errats", "#d62728", "x")]:
-            sub_df = df[df["IsMade"] == result]
-            fig.add_trace(go.Scatter(
-                x=sub_df["Parsed_X"],
-                y=sub_df["Parsed_Y"],
-                mode="markers",
-                marker=dict(color=color, size=6, symbol=symbol),
-                name=result,
-                hoverinfo="text",
-                text=sub_df["text"]
-            ))
-
-        # 4. Hidden Dummy Trace to Force a Colored Scale Legend
-        fig.add_trace(go.Scatter(
-            x=[None],
-            y=[None],
-            mode="markers",
-            marker=dict(
-                colorscale=scale,
-                cmin=min_v,
-                cmax=max_v,
-                showscale=True,
-                colorbar=dict(
-                    title=dict(
-                        text="PPS (Punts per Tir)" if metric_name == "PPS" else "Intents de Tir",
-                        side="top"
-                    ),
-                    thickness=15,
-                    x=1.02,
-                    y=0.5,
-                    ypad=10
-                )
-            ),
-            showlegend=False
-        ))
-
-        # Visual layout settings
-        title_prefix = "Volum de Tirs" if metric_name == "Attempts" else "Eficiència de Tir (PPS)"
-        fig.update_layout(
-            title=f"{title_prefix} - {st_player_label}",
-            xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-2, 49]),
-            # Visual aspect ratios locked strictly
-            yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-3, 53], scaleanchor="x", scaleratio=1),
-            plot_bgcolor="white",
-            height=500,
-            margin=dict(l=20, r=20, t=40, b=20),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        
-        figs.append(fig)
-        
-    return figs[0], figs[1]
+    # 1. Volume Chart (Viridis)
+    fig_vol = go.Figure()
+    fig_vol.add_trace(go.Bar(
+        y=labels_display,
+        x=attempts,
+        orientation='h',
+        marker=dict(
+            color=attempts,
+            colorscale="Viridis",
+            showscale=False
+        ),
+        text=[f"{val} tirs" for val in attempts],
+        textposition='inside' if max(attempts or [0]) > 0 else 'outside'
+    ))
+    fig_vol.update_layout(
+        title=f"Volum d'Intents per Zona - {st_player_label}",
+        xaxis=dict(title="Número de tirs (Intents)", showgrid=True),
+        yaxis=dict(autorange="reversed"), # Rim dalt de tot, ATB3 a sota
+        height=380,
+        margin=dict(l=20, r=20, t=40, b=20),
+        plot_bgcolor="rgba(0,0,0,0)"
+    )
+    
+    # 2. PPS Chart (Cividis)
+    fig_pps = go.Figure()
+    fig_pps.add_trace(go.Bar(
+        y=labels_display,
+        x=pps_vals,
+        orientation='h',
+        marker=dict(
+            color=pps_vals,
+            colorscale="Cividis",
+            showscale=False
+        ),
+        text=[f"{val:.2f} PPS" for val in pps_vals],
+        textposition='inside' if max(pps_vals or [0.0]) > 0 else 'outside'
+    ))
+    # canvi: Línia discontínua a 1.0 PPS de referència per a l' staff
+    fig_pps.add_vline(x=1.0, line_dash="dash", line_color="orange", annotation_text="Eficiència Estàndard (1.0 PPS)", annotation_position="top right")
+    fig_pps.update_layout(
+        title=f"Eficiència de Tir (Points Per Shot) - {st_player_label}",
+        xaxis=dict(title="Punts per llançament (PPS)", showgrid=True, range=[0.0, 3.0]),
+        yaxis=dict(autorange="reversed"),
+        height=380,
+        margin=dict(l=20, r=20, t=40, b=20),
+        plot_bgcolor="rgba(0,0,0,0)"
+    )
+    
+    return fig_vol, fig_pps
