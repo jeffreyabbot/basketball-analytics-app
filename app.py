@@ -16,7 +16,7 @@ from utils.data_loader import (
     find_best_matching_pbp,
     normalize_and_format_player_times,
     parse_time_to_minutes,
-    tag_shot_team 
+    tag_shot_team
 )
 from utils.court_visualizer import draw_colorblind_shot_charts
 
@@ -29,7 +29,7 @@ def check_password():
         st.session_state.authenticated = False
     
     if not st.session_state.authenticated:
-        st.title("🔒 Accés Staff")
+        st.title("🔒 Accés per a l'Staff")
         correct_password = st.secrets.get("auth", {}).get("password", None)
         
         if not correct_password:
@@ -55,7 +55,7 @@ CB_BLUE = "#1f77b4"
 CB_ORANGE = "#ff7f0e"
 CB_NEUTRAL = "#4a4a4a"
 
-st.sidebar.title("🏀 Analítica COPA")
+st.sidebar.title("🏀 Hub de l'Staff")
 
 # 1. Season Selector in Sidebar
 seasons = get_available_seasons(RAW_DIR)
@@ -81,7 +81,10 @@ if not AGG_FILE or not os.path.exists(AGG_FILE):
     AGG_FILE = resolve_path_case_insensitive(RAW_DIR, "aggregate", "aggregate_season_latest.xlsx")
 
 # 3. View selector (Sidebar)
-view = st.sidebar.radio("Navega per les Vistes", ["Analitzador de Partits", "Tendències de la Lliga", "Índex de Tir dels Jugadors"])
+view = st.sidebar.radio(
+    "Navega per les Vistes", 
+    ["Analitzador de Partits", "Tendències de la Lliga", "Índex de Tir dels Jugadors"]
+)
 
 # ----------------- VIEW 1: GAME ANALYZER -----------------
 if view == "Analitzador de Partits":
@@ -95,7 +98,22 @@ if view == "Analitzador de Partits":
         if not games:
             st.info("No s'han carregat partits. Afegeix els teus fitxers de boxscore/pbp de la setmana.")
         else:
-            selected_game = st.selectbox("Selecciona el Partit", games, format_func=lambda g: g["name"])
+            # canvi: Cercador / filtre previ per escurçar el desplegable de partits
+            all_game_teams = set()
+            for g in games:
+                if " vs " in g["name"]:
+                    parts = g["name"].split(" vs ")
+                    all_game_teams.add(parts[0].strip())
+                    all_game_teams.add(parts[1].strip())
+            
+            all_game_teams = ["Tots els equips"] + sorted(list(all_game_teams))
+            filter_team_game = st.selectbox("Filtra els partits per equip", all_game_teams)
+            
+            filtered_games = games
+            if filter_team_game != "Tots els equips":
+                filtered_games = [g for g in games if filter_team_game.lower() in g["name"].lower()]
+                
+            selected_game = st.selectbox("Selecciona el Partit", filtered_games, format_func=lambda g: g["name"])
             
             # Parse data
             team_summary, (t1_name, t1_players), (t2_name, t2_players) = parse_boxscore(selected_game["path"])
@@ -107,12 +125,15 @@ if view == "Analitzador de Partits":
             pbp_df_param = None
             if has_pbp:
                 pbp_df, shot_zone_df, lineups_df = parse_pbp(pbp_path)
-                # Classifica de manera neta cada llançament a l'equip que toca
                 pbp_df = tag_shot_team(pbp_df, t1_name, t2_name)
                 pbp_df_param = pbp_df
             
-            # Calculate standard regulation/OT game duration (player times are left unscaled/pristine)
+            # Calculate standard regulation/OT game duration
             estimated_game_mins = estimate_game_duration(t1_players, t2_players, pbp_df_param)
+            
+            # Perform player minute normalization (makes player sum perfectly match 160, 180, 200, 225, etc.)
+            t1_players = normalize_and_format_player_times(t1_players, rounded_game_mins=estimated_game_mins * 5)
+            t2_players = normalize_and_format_player_times(t2_players, rounded_game_mins=estimated_game_mins * 5)
             
             # --- Subsection 1: Advanced Metrics (OER/DER/PACE) ---
             st.subheader("Ràtings d'Eficiència de l'Equip")
@@ -131,12 +152,20 @@ if view == "Analitzador de Partits":
                 st.metric(
                     label="Durada del Partit", 
                     value=f"{estimated_game_mins} min", 
-                    help=f"Durada estàndard estimada del partit (Reglamentari o Pròrrogues)."
+                    help=f"Durada d'aquest partit basada en els períodes jugats."
                 )
                 
             # --- Subsection 2: Four Factors Comparison ---
             st.subheader("Comparació dels 4 Factors")
             factors = ["eFG%", "TOV%cal", "ORB%cal", "FTR"]
+            
+            # canvi: Definim eixos X fixos i reglamentaris per a cada factor
+            factor_ranges = {
+                "eFG%": [0.0, 80.0],      # eFG% generalment va de 0 a 80%
+                "TOV%cal": [0.0, 40.0],   # TO% generalment va de 0 a 40%
+                "ORB%cal": [0.0, 60.0],   # ORB% de 0 a 60%
+                "FTR": [0.0, 0.80]        # FTR de 0 a 0.80
+            }
             
             col_f1, col_f2 = st.columns(2)
             for i, factor in enumerate(factors):
@@ -156,7 +185,8 @@ if view == "Analitzador de Partits":
                         height=200,
                         margin=dict(l=20, r=20, t=40, b=20),
                         plot_bgcolor="rgba(0,0,0,0)",
-                        xaxis=dict(showgrid=False)
+                        # canvi: Forçar eix X fix per a comparativa immediata
+                        xaxis=dict(showgrid=False, range=factor_ranges[factor])
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
@@ -188,7 +218,11 @@ if view == "Analitzador de Partits":
                     else:
                         selected_cols = [c for c in zone_cols if c in players_df.columns]
                         
-                    st.dataframe(players_df[selected_cols].style.format(precision=2), use_container_width=True)
+                    # canvi: dataframe de Streamlit amb columnes que s'autoajusten de manera òptima (fit_columns)
+                    st.dataframe(
+                        players_df[selected_cols].style.format(precision=2), 
+                        use_container_width=True
+                    )
                 
             # --- Subsection 4: PBP-Specific Tabs ---
             if has_pbp:
@@ -231,8 +265,22 @@ if view == "Analitzador de Partits":
                     st.dataframe(pbp_df[["quarter", "time", "text"]].dropna().head(100), height=500, use_container_width=True)
                     
                 with lineup_tab:
+                    # canvi: Filtre d'equip obligatori per a la taula de quintets (lineups)
+                    selected_lineup_team = st.selectbox("Filtra els quintets per equip", ["Tots els equips", t1_name, t2_name])
+                    filtered_lineups = lineups_df.copy()
+                    
+                    if selected_lineup_team != "Tots els equips":
+                        # Cerca de manera defensiva quina columna del excel té el nom del equip
+                        team_col = None
+                        for col in lineups_df.columns:
+                            if lineups_df[col].astype(str).str.contains(t1_name, na=False).any() or lineups_df[col].astype(str).str.contains(t2_name, na=False).any():
+                                team_col = col
+                                break
+                        if team_col is not None:
+                            filtered_lineups = filtered_lineups[filtered_lineups[team_col] == selected_lineup_team]
+                            
                     st.write("Rendiment dels Quintets a la Pista")
-                    st.dataframe(lineups_df, use_container_width=True)
+                    st.dataframe(filtered_lineups, use_container_width=True)
             else:
                 st.warning("No s'ha trobat cap fitxer Play-By-Play per a aquest partit. S'ha fet una cerca aproximada però no hi ha coincidències.")
 
@@ -320,6 +368,9 @@ elif view == "Tendències de la Lliga":
             fig_scat.add_vline(x=mean_x, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Atac")
             fig_scat.add_hline(y=mean_y, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Def")
             
+            # canvi: Augmentar significativament l'alçada del gràfic de dispersió per fer l'eix Y més ample
+            fig_scat.update_layout(height=650)
+            
             # Reverse Y axis only if it is DER, Def eFG%, or Def FTR (where lower value is better)
             if y_metric in ["DERcal_Off", "eFG%_Def", "FTR_Def"]:
                 fig_scat.update_yaxes(autorange="reversed")
@@ -344,7 +395,8 @@ elif view == "Índex de Tir dels Jugadors":
         # Parse TIME column to float minutes for numerical filtering
         master_players["MinPerGame"] = master_players["TIME"].apply(parse_time_to_minutes)
         
-        st.write("Motor de cerca de tirs acumulats per jugador de la temporada. Filtra per nivell de volum.")
+        # canvi: Aclariment de que els % són d'eficiència i que el FGA indica el volum
+        st.write("Motor de cerca acumulats dels jugadors de la temporada. Els percentatges indiquen l'**Eficiència de Tir**, mentre que el **FGA** indica el volum total d'intents.")
         
         # Leaderboard Filters
         st.subheader("Filtres de la Taula")
@@ -352,9 +404,9 @@ elif view == "Índex de Tir dels Jugadors":
         with col_filt1:
             min_games = st.slider("Mínim de partits jugats", 1, int(master_players["GamesPlayed"].max() or 20), 5)
         with col_filt2:
-            min_fga = st.slider("Mínim de FGA per partit", 0.0, float(master_players["FGA"].max() or 20.0), 2.0, step=0.5)
+            min_fga = st.slider("Mínim de FGA per partit (Volum)", 0.0, float(master_players["FGA"].max() or 20.0), 2.0, step=0.5)
         with col_filt3:
-            min_mins = st.slider("Mínim de minuts per partit", 0.0, float(master_players["MinPerGame"].max() or 40.0), 10.0, step=1.0)
+            min_mins = st.slider("Mínim de minuts per partit (Presència)", 0.0, float(master_players["MinPerGame"].max() or 40.0), 10.0, step=1.0)
             
         filtered_players = master_players[
             (master_players["GamesPlayed"] >= min_games) &
@@ -362,20 +414,20 @@ elif view == "Índex de Tir dels Jugadors":
             (master_players["MinPerGame"] >= min_mins)
         ]
         
-        sort_metric_sel = st.selectbox("Criteri de Classificació Principal", ["eFG%", "Punts", "Partits Jugats", "FGA", "Minuts per Partit"])
+        sort_metric_sel = st.selectbox("Criteri de Classificació Principal", ["eFG% (Eficiència)", "Punts", "Partits Jugats", "FGA (Volum)", "Minuts per Partit"])
         
         sort_metric_mapping = {
-            "eFG%": "eFG%",
+            "eFG% (Eficiència)": "eFG%",
             "Punts": "PTS",
             "Partits Jugats": "GamesPlayed",
-            "FGA": "FGA",
+            "FGA (Volum)": "FGA",
             "Minuts per Partit": "MinPerGame"
         }
         sort_metric = sort_metric_mapping[sort_metric_sel]
         
         sorted_players = filtered_players.sort_values(sort_metric, ascending=False)
         
-        # Display clean structured dataframe
+        # canvi: Re-etiquetat de capçaleres per clarificar volum vs eficiència de tir
         view_cols = ["JUGADOR", "Team", "GamesPlayed", "TIME", "FGA", "PTS", "eFG%", "TS%", "Rim %", "Paint %", "MR %", "Cor3 %", "ATB3 %"]
         
         st.dataframe(
