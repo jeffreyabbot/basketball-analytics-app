@@ -290,9 +290,21 @@ if view == "Analitzador de Partits":
                                 break
                         if team_col is not None:
                             filtered_lineups = filtered_lineups[filtered_lineups[team_col] == selected_lineup_team]
+                    
+                    # canvi: Auto-ajust compacte del llistat de quintets
+                    lineup_col_config = {}
+                    for col in filtered_lineups.columns:
+                        if "Oncourt" in str(col) or "Player" in str(col) or filtered_lineups[col].dtype == object:
+                            lineup_col_config[col] = st.column_config.TextColumn(col, width="large")
+                        else:
+                            lineup_col_config[col] = st.column_config.NumberColumn(col, width="small")
                             
                     st.write("Rendiment dels Quintets a la Pista")
-                    st.dataframe(filtered_lineups, use_container_width=True)
+                    st.dataframe(
+                        filtered_lineups, 
+                        use_container_width=True,
+                        column_config=lineup_col_config
+                    )
             else:
                 st.warning("No s'ha trobat cap fitxer Play-By-Play per a aquest partit. S'ha fet una cerca aproximada però no hi ha coincidències.")
 
@@ -305,15 +317,33 @@ elif view == "Tendències de la Lliga":
     else:
         offense_df, defense_df, master_players = parse_aggregate(AGG_FILE)
         
+        # canvi: Configuració de columnes compacta per a les taules de lliga (Líderat d'Atac i Defensa)
+        league_col_config = {
+            "Team": st.column_config.TextColumn("Team", width="large")
+        }
+        for col in offense_df.columns:
+            if col != "Team":
+                league_col_config[col] = st.column_config.NumberColumn(col, width="small")
+
         tab_off, tab_def, tab_chart = st.tabs(["Classificació d'Atac de la Lliga", "Classificació de Defensa de la Lliga", "Gràfic de Dispersió"])
         
         with tab_off:
             st.write("Classificació d'Eficiència de la Lliga (Mètriques Ofensives)")
-            st.dataframe(offense_df.sort_values("OERcal", ascending=False).style.format(precision=2), use_container_width=True, height=600)
+            st.dataframe(
+                offense_df.sort_values("OERcal", ascending=False).style.format(precision=2), 
+                use_container_width=True, 
+                height=600,
+                column_config=league_col_config
+            )
             
         with tab_def:
             st.write("Classificació d'Eficiència de la Lliga (Mètriques Defensives)")
-            st.dataframe(defense_df.sort_values("DERcal", ascending=True).style.format(precision=2), use_container_width=True, height=600)
+            st.dataframe(
+                defense_df.sort_values("DERcal", ascending=True).style.format(precision=2), 
+                use_container_width=True, 
+                height=600,
+                column_config=league_col_config
+            )
             
         with tab_chart:
             st.write("Gràfic d'Anàlisi Dinàmica de la Lliga")
@@ -462,12 +492,25 @@ elif view == "Índex de Tir dels Jugadors":
             "Rim FGA", "Rim %", "Paint FGA", "Paint %", "MR FGA", "MR %", "Cor3 FGA", "Cor3 %", "ATB3 FGA", "ATB3 %"
         ]
         
+        # canvi: Mètode dinàmic d'autoajust per unificar l'aspecte net a l'índex de tir
+        player_index_config = {
+            "JUGADOR": st.column_config.TextColumn("JUGADOR", width="large"),
+            "Team": st.column_config.TextColumn("Team", width="medium")
+        }
+        for col in view_cols:
+            if col not in ["JUGADOR", "Team"]:
+                if col == "TIME":
+                    player_index_config[col] = st.column_config.TextColumn(col, width="small")
+                else:
+                    player_index_config[col] = st.column_config.NumberColumn(col, width="small")
+        
         st.dataframe(
             sorted_players[view_cols].style.format({
                 "TIME": "{}", # Time is already formatted clean string
                 "FGA": "{:.1f}",
                 "PTS": "{:.1f}",
                 "eFG%": "{:.2f}%",
+                "TS%": "{:.2f}%",
                 "Rim FGA": "{:.1f}",
                 "Rim %": "{:.1f}%",
                 "Paint FGA": "{:.1f}",
@@ -480,9 +523,7 @@ elif view == "Índex de Tir dels Jugadors":
                 "ATB3 %": "{:.1f}%"
             }),
             use_container_width=True,
-            column_config={
-                "JUGADOR": st.column_config.TextColumn("JUGADOR", width="large")
-            }
+            column_config=player_index_config
         )
 
 # ----------------- VIEW 4: SCOUTING DE RIVALS -----------------
