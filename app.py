@@ -234,7 +234,7 @@ if view == "Analitzador de Partits":
                                 
                     st.dataframe(
                         players_df[selected_cols].style.format(precision=2), 
-                        use_container_width=True,
+                        use_container_width=False,
                         column_config=col_config
                     )
                 
@@ -302,7 +302,7 @@ if view == "Analitzador de Partits":
                     st.write("Rendiment dels Quintets a la Pista")
                     st.dataframe(
                         filtered_lineups, 
-                        use_container_width=True,
+                        use_container_width=False,
                         column_config=lineup_col_config
                     )
             else:
@@ -331,7 +331,7 @@ elif view == "Tendències de la Lliga":
             st.write("Classificació d'Eficiència de la Lliga (Mètriques Ofensives)")
             st.dataframe(
                 offense_df.sort_values("OERcal", ascending=False).style.format(precision=2), 
-                use_container_width=True, 
+                use_container_width=False, 
                 height=600,
                 column_config=league_col_config
             )
@@ -522,7 +522,7 @@ elif view == "Índex de Tir dels Jugadors":
                 "ATB3 FGA": "{:.1f}",
                 "ATB3 %": "{:.1f}%"
             }),
-            use_container_width=True,
+            use_container_width=False,
             column_config=player_index_config
         )
 
@@ -682,7 +682,7 @@ elif view == "Scouting de Rivals":
                 st.write(f"Volum de tirs i PPS per a llançaments de 2 i 3 punts de {team_A}")
                 st.dataframe(
                     players_A_scout.style.format(scout_format), 
-                    use_container_width=True,
+                    use_container_width=False,
                     column_config={
                         "JUGADOR": st.column_config.TextColumn("JUGADOR", width="large")
                     }
@@ -692,7 +692,7 @@ elif view == "Scouting de Rivals":
                 st.write(f"Volum de tirs i PPS per a llançaments de 2 i 3 punts de {team_B}")
                 st.dataframe(
                     players_B_scout.style.format(scout_format), 
-                    use_container_width=True,
+                    use_container_width=False,
                     column_config={
                         "JUGADOR": st.column_config.TextColumn("JUGADOR", width="large")
                     }
