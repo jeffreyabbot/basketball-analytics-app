@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import os
+import re
 
 from utils.data_loader import (
     get_available_seasons, 
@@ -329,30 +330,41 @@ if view == "Analitzador de Partits":
 elif view == "Tendències de la Lliga":
     st.title(f"Tendències de la Lliga ({selected_season.replace('_', ' ')})")
     
-    # canvi: Invalidació intel·ligent per temps de modificació de fitxers de fons
+    # canvi: S'envien tant BOX_DIR com PBP_DIR per fer la cerca de Jornada en viu
     pbp_cache_key = get_dir_cache_key(BOX_DIR)
-    raw_games_df = load_all_raw_game_boxscores(BOX_DIR, pbp_cache_key)
+    raw_games_df = load_all_raw_game_boxscores(BOX_DIR, PBP_DIR, pbp_cache_key)
     
     if raw_games_df.empty:
         st.info("No s'han trobat dades de boxscores per calcular les tendències de la lliga.")
     else:
-        # canvi: Extracció dinàmica de l'històric de partits de lliga
-        game_options = sorted(list(raw_games_df["Game_Name"].unique()))
-        
-        st.subheader("Filtre dinàmic de partits de la temporada")
-        selected_games = st.multiselect(
-            "Selecciona els partits a incloure en el càlcul acumulador (desmarca partits per excloure'ls dels rànquings)",
-            game_options,
-            default=game_options
+        # canvi: Ordenació numèrica reglamentària de les Jornades de la lliga
+        week_options = sorted(
+            list(raw_games_df["Week"].dropna().unique()), 
+            key=lambda w: [int(s) for s in re.findall(r'\d+', w)] or [w]
         )
         
-        if not selected_games:
-            st.warning("Selecciona almenys un partit de lliga per calcular les tendències acumulades.")
+        st.subheader("Filtre dinàmic de partits de la lliga")
+        
+        # canvi: Interfície ultra-neta amb un Checkbox per defecte ("Totes")
+        select_all_weeks = st.checkbox("Inclou Totes les Jornades de la temporada", value=True)
+        
+        if select_all_weeks:
+            selected_weeks = week_options
+            st.info("Totes les jornades estan incloses en els càlculs de lliga.")
         else:
-            # Filtrem en viu els llançaments ofensius dels partits triats
-            filtered_raw_off = raw_games_df[raw_games_df["Game_Name"].isin(selected_games)].copy()
+            selected_weeks = st.multiselect(
+                "Selecciona les Jornades a incloure de forma manual (desmarca per excloure'ls rànquings)",
+                week_options,
+                default=week_options
+            )
             
-            # canvi: Mètode antibales de construcció dinàmica de dades defensives reals (Rival)
+        if not selected_weeks:
+            st.warning("Selecciona almenys una jornada de lliga per calcular les tendències dinàmiques.")
+        else:
+            # Filtrem en viu els llançaments ofensius segons la Jornada triada
+            filtered_raw_off = raw_games_df[raw_games_df["Week"].isin(selected_weeks)].copy()
+            
+            # canvi: Mètode de construcció dinàmica de dades defensives (Rival) basat en la setmana
             all_def_rows = []
             for file_name, group in raw_games_df.groupby("Game_File"):
                 if len(group) == 2:
@@ -361,7 +373,7 @@ elif view == "Tendències de la Lliga":
                     
                     # Les dades defensives de l'equip A són les dades ofensives del seu oponent (Equip B)
                     def_row0 = {
-                        "Team": row0["Team"], "Game_Name": row0["Game_Name"], "Game_File": row0["Game_File"],
+                        "Team": row0["Team"], "Game_Name": row0["Game_Name"], "Game_File": row0["Game_File"], "Week": row0["Week"],
                         "OERcal": row0["DERcal"], "DERcal": row0["OERcal"], "POSScal": row0["POSScal"],
                         "eFG%": row1["eFG%"], "TOV%cal": row1["TOV%cal"], "ORB%cal": row1["ORB%cal"], "FTR": row1["FTR"],
                         "Rim FGM": row1["Rim FGM"], "Rim FGA": row1["Rim FGA"],
@@ -371,7 +383,7 @@ elif view == "Tendències de la Lliga":
                         "ATB3 FGM": row1["ATB3 FGM"], "ATB3 FGA": row1["ATB3 FGA"]
                     }
                     def_row1 = {
-                        "Team": row1["Team"], "Game_Name": row1["Game_Name"], "Game_File": row1["Game_File"],
+                        "Team": row1["Team"], "Game_Name": row1["Game_Name"], "Game_File": row1["Game_File"], "Week": row1["Week"],
                         "OERcal": row1["DERcal"], "DERcal": row1["OERcal"], "POSScal": row1["POSScal"],
                         "eFG%": row0["eFG%"], "TOV%cal": row0["TOV%cal"], "ORB%cal": row0["ORB%cal"], "FTR": row0["FTR"],
                         "Rim FGM": row0["Rim FGM"], "Rim FGA": row0["Rim FGA"],
@@ -384,7 +396,7 @@ elif view == "Tendències de la Lliga":
                     all_def_rows.append(def_row1)
                     
             raw_defense_df = pd.DataFrame(all_def_rows)
-            filtered_raw_def = raw_defense_df[raw_defense_df["Game_Name"].isin(selected_games)].copy()
+            filtered_raw_def = raw_defense_df[raw_defense_df["Week"].isin(selected_weeks)].copy()
             
             # Columnes d'acumulat per promediar
             agg_cols = [
@@ -410,7 +422,7 @@ elif view == "Tendències de la Lliga":
                     if fgm_c in df_t.columns and fga_c in df_t.columns:
                         df_t[pct_c] = (df_t[fgm_c] / df_t[fga_c] * 100.0).fillna(0.0)
 
-            # canvi: Mantenim el disseny unificat de columnes en píxels compactes
+            # Mantenim el disseny unificat de columnes en píxels compactes
             league_col_config = {
                 "Team": st.column_config.TextColumn("Team", width=260)
             }

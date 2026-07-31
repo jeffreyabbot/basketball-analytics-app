@@ -460,10 +460,10 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
     return aggregated, combined_df
 
 @st.cache_data
-def load_all_raw_game_boxscores(boxscore_dir, cache_key):
+def load_all_raw_game_boxscores(boxscore_dir, pbp_dir, cache_key):
     """
-    Scans the boxscores directory and reads the team-level summaries 
-    for all games, returning a combined DataFrame of raw game-by-game team totals.
+    Scans the boxscores directory, reads team-level summaries for all games,
+    and dynamically aligns them with their correct Week (Jornada) by looking up the PBP lineups.
     """
     if not boxscore_dir or not os.path.exists(boxscore_dir):
         return pd.DataFrame()
@@ -473,9 +473,11 @@ def load_all_raw_game_boxscores(boxscore_dir, cache_key):
     
     for f in files:
         try:
+            # 1. Read team aggregate totals (first 2 rows)
             team_df = pd.read_excel(f, header=0, nrows=2)
             team_df.columns = team_df.columns.str.strip()
             
+            # Clean and format game names
             base = os.path.basename(f)
             game_name = base.replace("boxscore_", "").replace(".xlsx", "").replace("_", " ").title()
             game_name = " ".join(game_name.split())
@@ -483,6 +485,33 @@ def load_all_raw_game_boxscores(boxscore_dir, cache_key):
             team_df["Game_File"] = base
             team_df["Game_Name"] = game_name
             
+            # 2. Extract Week (Jornada) from the matching PBP lineups sheet
+            t1_name = str(team_df.iloc[0].get("Team", "")).strip()
+            t2_name = str(team_df.iloc[1].get("Team", "")).strip()
+            pbp_path = find_best_matching_pbp(t1_name, t2_name, pbp_dir, base)
+            
+            week_val = None
+            if pbp_path and os.path.exists(pbp_path):
+                try:
+                    xls = pd.ExcelFile(pbp_path)
+                    if len(xls.sheet_names) >= 3:
+                        df_lin = pd.read_excel(xls, sheet_name=2, header=None, nrows=5)
+                        # El número de jornada es troba habitualment a la segona columna
+                        week_val = df_lin.iloc[0, 1]
+                except Exception:
+                    pass
+                    
+            # Fallback si no troba el PBP de fons
+            if week_val is None or pd.isna(week_val):
+                nums = re.findall(r'\b\d{1,2}\b', base)
+                if nums:
+                    week_val = f"Jornada {nums[0]}"
+                else:
+                    week_val = "Altres"
+            else:
+                week_val = f"Jornada {int(float(week_val))}" if isinstance(week_val, (int, float)) else f"Jornada {week_val}"
+                
+            team_df["Week"] = week_val
             all_game_summaries.append(team_df)
         except Exception:
             continue
