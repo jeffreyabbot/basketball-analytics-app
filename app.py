@@ -492,11 +492,11 @@ elif view == "Tendències de la Lliga":
                     hide_index=True
                 )
                 
-                # canvi: ANALITZADOR CREUAT DE COMBINACIONS DE JUGADORS (On Court vs Off Court)
+                # canvi: ANALITZADOR DINÀMIC D'ON/OFF I CÀLCUL DE MILLORS/PITJORS PARELLES (Fase 3 avançada)
                 st.markdown("---")
-                st.subheader("Anàlisi Creuat de Parelles de Jugadors (Coincidència a Pista)")
+                st.subheader("Anàlisi de Coincidència i Rànquing de Parelles")
                 
-                # Extraiem la llista de jugadors únics del roster de l'equip
+                # Extraiem la llista de jugadors únics de l'equip
                 roster = set()
                 for c in ["P1", "P2", "P3", "P4", "P5"]:
                     if c in agg_lineups.columns:
@@ -505,14 +505,85 @@ elif view == "Tendències de la Lliga":
                 
                 col_pX, col_pY = st.columns(2)
                 with col_pX:
-                    player_X = st.selectbox("Selecciona el Jugador X", roster_list, index=0)
+                    player_X = st.selectbox("Selecciona el Jugador A (Principal)", roster_list, index=0)
                 with col_pY:
-                    player_Y = st.selectbox("Selecciona el Jugador Y", roster_list, index=min(1, len(roster_list)-1))
+                    # canvi: Segon selector opcional que permet analitzar un sol jugador o fer creuaments
+                    roster_with_none = ["Cap (Només Jugador A)"] + [p for p in roster_list if p != player_X]
+                    player_Y = st.selectbox("Selecciona el Jugador B (Opcional)", roster_with_none, index=0)
                     
-                if player_X == player_Y:
-                    st.warning("Selecciona dos jugadors diferents per poder calcular la coincidència creuada.")
+                if player_Y == "Cap (Només Jugador A)":
+                    # --- MODE 1: ANALISI ON/OFF (UN JUGADOR) ---
+                    on_court = agg_lineups[agg_lineups["Lineup"].str.contains(player_X, na=False)]
+                    off_court = agg_lineups[~agg_lineups["Lineup"].str.contains(player_X, na=False)]
+                    
+                    st.write(f"Rendiment global d'On/Off per a **{player_X}**:")
+                    col_on, col_off = st.columns(2)
+                    with col_on:
+                        plus_on = on_court["+/-"].sum() if not on_court.empty else 0.0
+                        st.metric(
+                            label=f"A Pista ({player_X})", 
+                            value=f"{plus_on:+.1f}",
+                            help=f"Equip jugant amb el Jugador A a pista. Punts a favor: {on_court['PTS_For'].sum():.0f}, Punts en contra: {on_court['PTS_Agn'].sum():.0f}"
+                        )
+                    with col_off:
+                        plus_off = off_court["+/-"].sum() if not off_court.empty else 0.0
+                        st.metric(
+                            label=f"A la Banqueta (Off-Court)", 
+                            value=f"{plus_off:+.1f}",
+                            help=f"Equip jugant sense el Jugador A a pista. Punts a favor: {off_court['PTS_For'].sum():.0f}, Punts en contra: {off_court['PTS_Agn'].sum():.0f}"
+                        )
+                        
+                    # canvi: RÀNQUING AUTOMÀTIC DE LES MILLORS I PITJORS PARELLES DE JOC DEL JUGADOR A
+                    st.write("")
+                    teammate_stats = []
+                    for teammate in roster_list:
+                        if teammate == player_X:
+                            continue
+                        both_on = agg_lineups[
+                            agg_lineups["Lineup"].str.contains(player_X, na=False) & 
+                            agg_lineups["Lineup"].str.contains(teammate, na=False)
+                        ]
+                        if not both_on.empty:
+                            teammate_stats.append({
+                                "Company": teammate,
+                                "+/- Acumulat": both_on["+/-"].sum(),
+                                "Tirs a favor": both_on["PTS_For"].sum(),
+                                "Tirs en contra": both_on["PTS_Agn"].sum()
+                            })
+                            
+                    if teammate_stats:
+                        teammate_df = pd.DataFrame(teammate_stats).sort_values("+/- Acumulat", ascending=False)
+                        
+                        col_best, col_worst = st.columns(2)
+                        
+                        # Format compacte de taules unificades
+                        t_config = {
+                            "Company": st.column_config.TextColumn("Company", width="large")
+                        }
+                        for col in ["+/- Acumulat", "Tirs a favor", "Tirs en contra"]:
+                            t_config[col] = st.column_config.NumberColumn(col, width="small")
+                            
+                        with col_best:
+                            st.write(f"👍 **Millors companyies per a {player_X}**")
+                            st.dataframe(
+                                teammate_df.head(3), 
+                                use_container_width=False, 
+                                hide_index=True, 
+                                column_config=t_config
+                            )
+                        with col_best:
+                            pass # Espai buit de seguretat
+                        with col_worst:
+                            st.write(f"👎 **Pitjors companyies per a {player_X}**")
+                            # Mostra els 3 pitjors ordenats de pitjor a millor
+                            st.dataframe(
+                                teammate_df.tail(3).sort_values("+/- Acumulat", ascending=True), 
+                                use_container_width=False, 
+                                hide_index=True, 
+                                column_config=t_config
+                            )
                 else:
-                    # Divisió matemàtica estricta dels quintets temporals en els 4 estats possibles
+                    # --- MODE 2: ANALISI CREUAT COMPLET (DOS JUGADORS) ---
                     both_on = agg_lineups[agg_lineups["Lineup"].str.contains(player_X, na=False) & agg_lineups["Lineup"].str.contains(player_Y, na=False)]
                     only_X = agg_lineups[agg_lineups["Lineup"].str.contains(player_X, na=False) & ~agg_lineups["Lineup"].str.contains(player_Y, na=False)]
                     only_Y = agg_lineups[~agg_lineups["Lineup"].str.contains(player_X, na=False) & agg_lineups["Lineup"].str.contains(player_Y, na=False)]
@@ -550,7 +621,6 @@ elif view == "Tendències de la Lliga":
                             value=f"{plus_minus:+.1f}",
                             help=f"Cap dels dos jugadors a pista. Punts a favor: {both_off['PTS_For'].sum():.0f}, Punts en contra: {both_off['PTS_Agn'].sum():.0f}"
                         )
-
 # ----------------- VIEW 3: PLAYER SHOOTING INDEX -----------------
 elif view == "Índex de Tir dels Jugadors":
     st.title(f"Índex de Tir dels Jugadors ({selected_season.replace('_', ' ')})")
