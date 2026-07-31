@@ -86,7 +86,7 @@ view = st.sidebar.radio(
     ["Analitzador de Partits", "Tendències de la Lliga", "Índex de Tir dels Jugadors"]
 )
 
-# ----------------- VIEW 1: GAME ANALYZER -----------------
+# ----------------- VIEW 1: GAME ANALITZADOR -----------------
 if view == "Analitzador de Partits":
     st.title(f"Analitzador de Partits ({selected_season.replace('_', ' ')})")
     
@@ -131,9 +131,9 @@ if view == "Analitzador de Partits":
             # Calculate standard regulation/OT game duration
             estimated_game_mins = estimate_game_duration(t1_players, t2_players, pbp_df_param)
             
-            # Perform player minute normalization (makes player sum perfectly match 160, 180, 200, 225, etc.)
-            t1_players = normalize_and_format_player_times(t1_players, rounded_game_mins=estimated_game_mins * 5)
-            t2_players = normalize_and_format_player_times(t2_players, rounded_game_mins=estimated_game_mins * 5)
+            # Perform player minute normalization (canvi: eliminem la paraula clau rounded_game_mins per evitar errors)
+            t1_players = normalize_and_format_player_times(t1_players, estimated_game_mins * 5)
+            t2_players = normalize_and_format_player_times(t2_players, estimated_game_mins * 5)
             
             # --- Subsection 1: Advanced Metrics (OER/DER/PACE) ---
             st.subheader("Ràtings d'Eficiència de l'Equip")
