@@ -451,16 +451,12 @@ elif view == "Tendències de la Lliga":
             scout_teams = sorted(list(offense_df["Team"].unique()))
             selected_agg_team = st.selectbox("Selecciona l'Equip per analitzar els seus Quintets acumulats", scout_teams)
             
-            # canvi: Invalidació intel·ligent de memòria cau basada en temps de modificació
             pbp_cache_key = get_dir_cache_key(PBP_DIR)
-            
-            # Carreguem els quintets de lliga de manera instantània des de la cache
             agg_lineups = load_and_aggregate_season_lineups(PBP_DIR, selected_agg_team, pbp_cache_key)
             
             if agg_lineups.empty:
                 st.info("No s'han trobat dades de quintets per a aquest equip en els fitxers Play-by-Play d'aquesta temporada.")
             else:
-                # Columnes configurades incloent rebots (RO/RD), volums i % de 2P i 3P (Team i Rival)
                 lineup_cols = [
                     "P1", "P2", "P3", "P4", "P5", "Lineup", "PTS_For", "PTS_Agn", "+/-", 
                     "RO_For", "RD_For", "RO_Agn", "RD_Agn",
@@ -469,8 +465,6 @@ elif view == "Tendències de la Lliga":
                     "TOV_For", "TOV_Agn"
                 ]
                 selected_lineup_cols = [c for c in lineup_cols if c in agg_lineups.columns]
-                
-                # Formatadors compactes de percentatges
                 pct_cols = [c for c in selected_lineup_cols if "%" in c]
                 
                 lineup_col_config = {}
@@ -492,7 +486,6 @@ elif view == "Tendències de la Lliga":
                     hide_index=True
                 )
                 
-                # canvi: ANALITZADOR DINÀMIC D'ON/OFF I CÀLCUL DE MILLORS/PITJORS PARELLES (Fase 3 avançada)
                 st.markdown("---")
                 st.subheader("Anàlisi de Coincidència i Rànquing de Parelles")
                 
@@ -507,10 +500,40 @@ elif view == "Tendències de la Lliga":
                 with col_pX:
                     player_X = st.selectbox("Selecciona el Jugador A (Principal)", roster_list, index=0)
                 with col_pY:
-                    # canvi: Segon selector opcional que permet analitzar un sol jugador o fer creuaments
                     roster_with_none = ["Cap (Només Jugador A)"] + [p for p in roster_list if p != player_X]
                     player_Y = st.selectbox("Selecciona el Jugador B (Opcional)", roster_with_none, index=0)
                     
+                # canvi: Mètode programàtic de càlcul d'estadístiques avançades per a parelles de l'staff
+                def calculate_combo_stats_metrics(df):
+                    if df.empty:
+                        return 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0
+                    
+                    # Volums de tirs
+                    fga_for = float(df["2PA_For"].sum() + df["3PA_For"].sum())
+                    fgm_for_weighted = float(df["2PM_For"].sum() + 1.5 * df["3PM_For"].sum())
+                    
+                    fga_agn = float(df["2PA_Agn"].sum() + df["3PA_Agn"].sum())
+                    fgm_agn_weighted = float(df["2PM_Agn"].sum() + 1.5 * df["3PM_Agn"].sum())
+                    
+                    # eFG% (Ofensiva i Defensiva)
+                    off_efg = (fgm_for_weighted / fga_for * 100.0) if fga_for > 0 else 0.0
+                    def_efg = (fgm_agn_weighted / fga_agn * 100.0) if fga_agn > 0 else 0.0
+                    
+                    # TO% (Pèrdues ofensives i defensives estimades per possessions)
+                    poss_for = fga_for + 0.44 * df["FTA_For"].sum() + df["TOV_For"].sum()
+                    to_pct = (df["TOV_For"].sum() / poss_for * 100.0) if poss_for > 0 else 0.0
+                    
+                    poss_agn = fga_agn + 0.44 * df["FTA_Agn"].sum() + df["TOV_Agn"].sum()
+                    to_pct_ag = (df["TOV_Agn"].sum() / poss_agn * 100.0) if poss_agn > 0 else 0.0
+                    
+                    # Totals de Rebot (RO i RD)
+                    ro = int(df["RO_For"].sum()) if "RO_For" in df.columns else 0
+                    ro_ag = int(df["RO_Agn"].sum()) if "RO_Agn" in df.columns else 0
+                    rd = int(df["RD_For"].sum()) if "RD_For" in df.columns else 0
+                    rd_ag = int(df["RD_Agn"].sum()) if "RD_Agn" in df.columns else 0
+                    
+                    return off_efg, def_efg, to_pct, to_pct_ag, ro, ro_ag, rd, rd_ag
+
                 if player_Y == "Cap (Només Jugador A)":
                     # --- MODE 1: ANALISI ON/OFF (UN JUGADOR) ---
                     on_court = agg_lineups[agg_lineups["Lineup"].str.contains(player_X, na=False)]
@@ -533,7 +556,6 @@ elif view == "Tendències de la Lliga":
                             help=f"Equip jugant sense el Jugador A a pista. Punts a favor: {off_court['PTS_For'].sum():.0f}, Punts en contra: {off_court['PTS_Agn'].sum():.0f}"
                         )
                         
-                    # canvi: RÀNQUING AUTOMÀTIC DE LES MILLORS I PITJORS PARELLES DE JOC DEL JUGADOR A
                     st.write("")
                     teammate_stats = []
                     for teammate in roster_list:
@@ -544,11 +566,20 @@ elif view == "Tendències de la Lliga":
                             agg_lineups["Lineup"].str.contains(teammate, na=False)
                         ]
                         if not both_on.empty:
+                            # Càlcul de mètriques avançades de dades de la parella
+                            o_efg, d_efg, to_p, to_pa, ro, ro_ag, rd, rd_ag = calculate_combo_stats_metrics(both_on)
+                            
                             teammate_stats.append({
                                 "Company": teammate,
                                 "+/- Acumulat": both_on["+/-"].sum(),
-                                "Tirs a favor": both_on["PTS_For"].sum(),
-                                "Tirs en contra": both_on["PTS_Agn"].sum()
+                                "off eFG%": o_efg,
+                                "def eFG%": d_efg,
+                                "to%": to_p,
+                                "to%ag": to_pa,
+                                "ro": ro,
+                                "ro Ag": ro_ag,
+                                "rd": rd,
+                                "rd ag": rd_ag
                             })
                             
                     if teammate_stats:
@@ -556,11 +587,14 @@ elif view == "Tendències de la Lliga":
                         
                         col_best, col_worst = st.columns(2)
                         
-                        # Format compacte de taules unificades
+                        # canvi: Nova configuració de columnes compacta de 10 columnes per a dades de l'staff
                         t_config = {
-                            "Company": st.column_config.TextColumn("Company", width="large")
+                            "Company": st.column_config.TextColumn("Company", width=240),
+                            "+/- Acumulat": st.column_config.NumberColumn("+/- Acum", width="small")
                         }
-                        for col in ["+/- Acumulat", "Tirs a favor", "Tirs en contra"]:
+                        for col in ["off eFG%", "def eFG%", "to%", "to%ag"]:
+                            t_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width="small")
+                        for col in ["ro", "ro Ag", "rd", "rd ag"]:
                             t_config[col] = st.column_config.NumberColumn(col, width="small")
                             
                         with col_best:
@@ -572,10 +606,9 @@ elif view == "Tendències de la Lliga":
                                 column_config=t_config
                             )
                         with col_best:
-                            pass # Espai buit de seguretat
+                            pass
                         with col_worst:
                             st.write(f"👎 **Pitjors companyies per a {player_X}**")
-                            # Mostra els 3 pitjors ordenats de pitjor a millor
                             st.dataframe(
                                 teammate_df.tail(3).sort_values("+/- Acumulat", ascending=True), 
                                 use_container_width=False, 
