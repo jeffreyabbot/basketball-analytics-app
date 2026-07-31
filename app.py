@@ -504,10 +504,59 @@ elif view == "Tendències de la Lliga":
                     roster_with_none = ["Cap (Només Jugador A)"] + [p for p in roster_list if p != player_X]
                     player_Y = st.selectbox("Selecciona el Jugador B (Opcional)", roster_with_none, index=0)
                     
+               # canvi: Algorisme de categorització d'un sol pas per evitar duplicats en rebots i pèrdues
                 def calculate_combo_stats_metrics(df):
                     if df.empty:
                         return 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0
                     
+                    # 1. Classificació dinàmica de l'històric (evita dobles lectures de 'agn' i 'ag')
+                    ro = 0
+                    rd = 0
+                    ro_ag = 0
+                    rd_ag = 0
+                    
+                    tov_for = 0.0
+                    fta_for = 0.0
+                    tov_agn = 0.0
+                    fta_agn = 0.0
+                    
+                    for col in df.columns:
+                        col_lower = col.lower()
+                        col_sum = df[col].sum()
+                        
+                        # Control de pèrdues (TOV)
+                        if "tov" in col_lower:
+                            if "for" in col_lower:
+                                tov_for += col_sum
+                            elif "agn" in col_lower or "ag" in col_lower:
+                                tov_agn += col_sum
+                                
+                        # Control de tirs lliures (FTA)
+                        elif "fta" in col_lower:
+                            if "for" in col_lower:
+                                fta_for += col_sum
+                            elif "agn" in col_lower or "ag" in col_lower:
+                                fta_agn += col_sum
+                                
+                        # Control de rebot ofensiu (RO)
+                        elif any(p in col_lower for p in ["oreb", "orb", "ro_"]):
+                            is_off_reb = any(p in col_lower for p in ["oreb", "orb"]) or col_lower.startswith("ro") or "ro_for" in col_lower or "ro_agn" in col_lower or "ro_ag" in col_lower
+                            if is_off_reb:
+                                if "for" in col_lower:
+                                    ro += int(col_sum)
+                                elif "agn" in col_lower or "ag" in col_lower:
+                                    ro_ag += int(col_sum)
+                                    
+                        # Control de rebot defensiu (RD)
+                        elif any(p in col_lower for p in ["dreb", "drb", "rd_"]):
+                            is_def_reb = any(p in col_lower for p in ["dreb", "drb"]) or col_lower.startswith("rd") or "rd_for" in col_lower or "rd_agn" in col_lower or "rd_ag" in col_lower
+                            if is_def_reb:
+                                if "for" in col_lower:
+                                    rd += int(col_sum)
+                                elif "agn" in col_lower or "ag" in col_lower:
+                                    rd_ag += int(col_sum)
+
+                    # 2. Recompte estricte de llançaments per zones
                     def sum_cols_matching(patterns):
                         total = 0.0
                         for col in df.columns:
@@ -538,6 +587,7 @@ elif view == "Tendències de la Lliga":
                     atb_fga_agn = sum_cols_matching(["atb", "fga", "ag"])
                     atb_fgm_agn = sum_cols_matching(["atb", "fgm", "ag"])
                     
+                    # 3. Mètriques de 2P i 3P totals
                     fga_2p_for = rim_fga_for + paint_fga_for + mr_fga_for
                     fgm_2p_for = rim_fgm_for + paint_fgm_for + mr_fgm_for
                     fga_3p_for = cor_fga_for + atb_fga_for
@@ -554,24 +604,15 @@ elif view == "Tendències de la Lliga":
                     fga_agn = fga_2p_agn + fga_3p_agn
                     fgm_agn_weighted = fgm_2p_agn + 1.5 * fgm_3p_agn
                     
+                    # Càlculs de ràtio final
                     off_efg = (fgm_for_weighted / fga_for * 100.0) if fga_for > 0 else 0.0
                     def_efg = (fgm_agn_weighted / fga_agn * 100.0) if fga_agn > 0 else 0.0
                     
-                    tov_for = sum_cols_matching(["tov", "for"])
-                    fta_for = sum_cols_matching(["fta", "for"])
                     poss_for = fga_for + 0.44 * fta_for + tov_for
                     to_pct = (tov_for / poss_for * 100.0) if poss_for > 0 else 0.0
                     
-                    tov_agn = sum_cols_matching(["tov", "agn"]) + sum_cols_matching(["tov", "ag"])
-                    fta_agn = sum_cols_matching(["fta", "agn"]) + sum_cols_matching(["fta", "ag"])
                     poss_agn = fga_agn + 0.44 * fta_agn + tov_agn
                     to_pct_ag = (tov_agn / poss_agn * 100.0) if poss_agn > 0 else 0.0
-                    
-                    ro = int(sum_cols_matching(["ro", "for"]) + sum_cols_matching(["oreb", "for"]) + sum_cols_matching(["orb", "for"]))
-                    rd = int(sum_cols_matching(["rd", "for"]) + sum_cols_matching(["dreb", "for"]) + sum_cols_matching(["drb", "for"]))
-                    
-                    ro_ag = int(sum_cols_matching(["ro", "agn"]) + sum_cols_matching(["oreb", "agn"]) + sum_cols_matching(["orb", "agn"]) + sum_cols_matching(["ro", "ag"]) + sum_cols_matching(["oreb", "ag"]) + sum_cols_matching(["orb", "ag"]))
-                    rd_ag = int(sum_cols_matching(["rd", "agn"]) + sum_cols_matching(["dreb", "agn"]) + sum_cols_matching(["drb", "agn"]) + sum_cols_matching(["rd", "ag"]) + sum_cols_matching(["dreb", "ag"]) + sum_cols_matching(["drb", "ag"]))
                     
                     return off_efg, def_efg, to_pct, to_pct_ag, ro, ro_ag, rd, rd_ag
 
