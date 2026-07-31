@@ -464,13 +464,14 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
     """
     Scans PBP directory, aggregates lineups, and calculates advanced stats 
     (Rebounds, 2P/3P Volumes & Percentages) with dynamic caching.
+    Returns both aggregated and raw combined dataframes.
     """
     if not pbp_dir or not os.path.exists(pbp_dir):
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
         
     pbp_files = [os.path.join(pbp_dir, f) for f in os.listdir(pbp_dir) if f.lower().endswith((".xlsx", ".xls"))]
     if not pbp_files:
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
         
     all_lineups = []
     for pf in pbp_files:
@@ -493,7 +494,7 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
             continue
             
     if not all_lineups:
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
         
     combined_df = pd.concat(all_lineups, ignore_index=True)
     combined_df.columns = combined_df.columns.str.strip()
@@ -516,7 +517,7 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
                 lambda row: ", ".join(sorted([str(row["P1"]), str(row["P2"]), str(row["P3"]), str(row["P4"]), str(row["P5"])])), axis=1
             )
         else:
-            return pd.DataFrame()
+            return pd.DataFrame(), pd.DataFrame()
             
     # Target standard columns to aggregate
     numeric_cols = [
@@ -525,7 +526,7 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
         "RO_For", "RD_For", "RO_Agn", "RD_Agn"
     ]
     
-    # canvi: Scanner dinàmic per agrupar i conservar totes les columnes de tir reals del excel de fons (RIM, PAINT, etc.)
+    # Scanner dinàmic per agrupar i conservar totes les columnes de tir reals del excel de fons (RIM, PAINT, etc.)
     for col in combined_df.columns:
         col_lower = col.lower()
         if any(z in col_lower for z in ["rim", "paint", "mr", "cor", "atb"]):
@@ -563,4 +564,5 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
     if "+/-" in aggregated.columns:
         aggregated = aggregated.sort_values("+/-", ascending=False)
         
-    return aggregated
+    # canvi: Retornem la parella (taula acumulada + taula de fons sencera) per permetre creuaments
+    return aggregated, combined_df

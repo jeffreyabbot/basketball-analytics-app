@@ -452,7 +452,9 @@ elif view == "Tendències de la Lliga":
             selected_agg_team = st.selectbox("Selecciona l'Equip per analitzar els seus Quintets acumulats", scout_teams)
             
             pbp_cache_key = get_dir_cache_key(PBP_DIR)
-            agg_lineups = load_and_aggregate_season_lineups(PBP_DIR, selected_agg_team, pbp_cache_key)
+            
+            # canvi: Desempaquetem la parella de dades (taula acumulada + taula bruta històrica)
+            agg_lineups, combined_df = load_and_aggregate_season_lineups(PBP_DIR, selected_agg_team, pbp_cache_key)
             
             if agg_lineups.empty:
                 st.info("No s'han trobat dades de quintets per a aquest equip en els fitxers Play-by-Play d'aquesta temporada.")
@@ -489,7 +491,6 @@ elif view == "Tendències de la Lliga":
                 st.markdown("---")
                 st.subheader("Anàlisi de Coincidència i Rànquing de Parelles")
                 
-                # Extraiem la llista de jugadors únics de l'equip
                 roster = set()
                 for c in ["P1", "P2", "P3", "P4", "P5"]:
                     if c in agg_lineups.columns:
@@ -503,12 +504,10 @@ elif view == "Tendències de la Lliga":
                     roster_with_none = ["Cap (Només Jugador A)"] + [p for p in roster_list if p != player_X]
                     player_Y = st.selectbox("Selecciona el Jugador B (Opcional)", roster_with_none, index=0)
                     
-                # canvi: Mètode programàtic de càlcul dinàmic d'estadístiques avançades lliure d'errors de clau (KeyError)
                 def calculate_combo_stats_metrics(df):
                     if df.empty:
                         return 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0
                     
-                    # Funció de cerca dinàmica insensible a majúscules/minúscules
                     def sum_cols_matching(patterns):
                         total = 0.0
                         for col in df.columns:
@@ -517,63 +516,47 @@ elif view == "Tendències de la Lliga":
                                 total += df[col].sum()
                         return total
 
-                    # 1. Sumem el volum (FGA) i encerts (FGM) de fons per a cada zona de 2P i 3P (Ofensiu)
                     rim_fga_for = sum_cols_matching(["rim", "fga", "for"])
                     rim_fgm_for = sum_cols_matching(["rim", "fgm", "for"])
-                    
                     paint_fga_for = sum_cols_matching(["paint", "fga", "for"])
                     paint_fgm_for = sum_cols_matching(["paint", "fgm", "for"])
-                    
                     mr_fga_for = sum_cols_matching(["mr", "fga", "for"])
                     mr_fgm_for = sum_cols_matching(["mr", "fgm", "for"])
-                    
                     cor_fga_for = sum_cols_matching(["cor", "fga", "for"])
                     cor_fgm_for = sum_cols_matching(["cor", "fgm", "for"])
-                    
                     atb_fga_for = sum_cols_matching(["atb", "fga", "for"])
                     atb_fgm_for = sum_cols_matching(["atb", "fgm", "for"])
                     
-                    # 2. Sumem el volum (FGA) i encerts (FGM) de fons per a cada zona de 2P i 3P (Defensiu / Rival)
                     rim_fga_agn = sum_cols_matching(["rim", "fga", "ag"])
                     rim_fgm_agn = sum_cols_matching(["rim", "fgm", "ag"])
-                    
                     paint_fga_agn = sum_cols_matching(["paint", "fga", "ag"])
                     paint_fgm_agn = sum_cols_matching(["paint", "fgm", "ag"])
-                    
                     mr_fga_agn = sum_cols_matching(["mr", "fga", "ag"])
                     mr_fgm_agn = sum_cols_matching(["mr", "fgm", "ag"])
-                    
                     cor_fga_agn = sum_cols_matching(["cor", "fga", "ag"])
                     cor_fgm_agn = sum_cols_matching(["cor", "fgm", "ag"])
-                    
                     atb_fga_agn = sum_cols_matching(["atb", "fga", "ag"])
                     atb_fgm_agn = sum_cols_matching(["atb", "fgm", "ag"])
                     
-                    # 3. Calculem l'acumulat total de 2P i 3P
                     fga_2p_for = rim_fga_for + paint_fga_for + mr_fga_for
                     fgm_2p_for = rim_fgm_for + paint_fgm_for + mr_fgm_for
-                    
                     fga_3p_for = cor_fga_for + atb_fga_for
                     fgm_3p_for = cor_fgm_for + atb_fgm_for
                     
                     fga_for = fga_2p_for + fga_3p_for
                     fgm_for_weighted = fgm_2p_for + 1.5 * fgm_3p_for
                     
-                    # 4. Calculem l'acumulat total de 2P i 3P (Rival)
                     fga_2p_agn = rim_fga_agn + paint_fga_agn + mr_fga_agn
                     fgm_2p_agn = rim_fgm_agn + paint_fgm_agn + mr_fgm_agn
-                    
                     fga_3p_agn = cor_fga_agn + atb_fga_agn
                     fgm_3p_agn = cor_fgm_agn + atb_fgm_agn
                     
                     fga_agn = fga_2p_agn + fga_3p_agn
                     fgm_agn_weighted = fgm_2p_agn + 1.5 * fgm_3p_agn
                     
-                    # eFG% (Ofensiva i Defensiva)
                     off_efg = (fgm_for_weighted / fga_for * 100.0) if fga_for > 0 else 0.0
                     def_efg = (fgm_agn_weighted / fga_agn * 100.0) if fga_agn > 0 else 0.0
                     
-                    # TO% (Pèrdues ofensives i defensives estimades per possessions reals)
                     tov_for = sum_cols_matching(["tov", "for"])
                     fta_for = sum_cols_matching(["fta", "for"])
                     poss_for = fga_for + 0.44 * fta_for + tov_for
@@ -584,7 +567,6 @@ elif view == "Tendències de la Lliga":
                     poss_agn = fga_agn + 0.44 * fta_agn + tov_agn
                     to_pct_ag = (tov_agn / poss_agn * 100.0) if poss_agn > 0 else 0.0
                     
-                    # Totals de Rebot (RO i RD)
                     ro = int(sum_cols_matching(["ro", "for"]) + sum_cols_matching(["oreb", "for"]) + sum_cols_matching(["orb", "for"]))
                     rd = int(sum_cols_matching(["rd", "for"]) + sum_cols_matching(["dreb", "for"]) + sum_cols_matching(["drb", "for"]))
                     
@@ -595,8 +577,9 @@ elif view == "Tendències de la Lliga":
 
                 if player_Y == "Cap (Només Jugador A)":
                     # --- MODE 1: ANALISI ON/OFF (UN JUGADOR) ---
-                    on_court = agg_lineups[agg_lineups["Lineup"].str.contains(player_X, na=False)]
-                    off_court = agg_lineups[~agg_lineups["Lineup"].str.contains(player_X, na=False)]
+                    # Cerca programàtica sobre combined_df brut per saber minuts totals de pista de l' staff
+                    on_court = combined_df[combined_df["Lineup"].str.contains(player_X, na=False)]
+                    off_court = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False)]
                     
                     st.write(f"Rendiment global d'On/Off per a **{player_X}**:")
                     col_on, col_off = st.columns(2)
@@ -620,20 +603,31 @@ elif view == "Tendències de la Lliga":
                     for teammate in roster_list:
                         if teammate == player_X:
                             continue
-                        both_on = agg_lineups[
-                            agg_lineups["Lineup"].str.contains(player_X, na=False) & 
-                            agg_lineups["Lineup"].str.contains(teammate, na=False)
+                        
+                        # canvi: Càlcul sobre combined_df brut per a una precisió del 100% de partits i rotacions (trams)
+                        both_on_raw = combined_df[
+                            combined_df["Lineup"].str.contains(player_X, na=False) & 
+                            combined_df["Lineup"].str.contains(teammate, na=False)
                         ]
-                        if not both_on.empty:
-                            o_efg, d_efg, to_p, to_pa, ro, ro_ag, rd, rd_ag = calculate_combo_stats_metrics(both_on)
+                        
+                        if not both_on_raw.empty:
+                            o_efg, d_efg, to_p, to_pa, ro, ro_ag, rd, rd_ag = calculate_combo_stats_metrics(both_on_raw)
                             
-                            # canvi: Calculem de manera exacta el número de partits i trams jugats en comú
-                            partits_junts = int(both_on["Rival"].nunique()) if "Rival" in both_on.columns else 1
-                            trams_junts = int(len(both_on))
+                            # canvi: Detector de partits únics basat en Setmana_Rival de les línies de combined_df
+                            if "Week" in both_on_raw.columns and "Rival" in both_on_raw.columns:
+                                both_on_raw = both_on_raw.copy()
+                                both_on_raw["Game_ID"] = both_on_raw["Week"].astype(str) + "_" + both_on_raw["Rival"].astype(str)
+                                partits_junts = int(both_on_raw["Game_ID"].nunique())
+                            elif "Rival" in both_on_raw.columns:
+                                partits_junts = int(both_on_raw["Rival"].nunique())
+                            else:
+                                partits_junts = 1
+                                
+                            trams_junts = int(len(both_on_raw))
                             
                             teammate_stats.append({
                                 "Company": teammate,
-                                "+/- Acumulat": both_on["+/-"].sum(),
+                                "+/- Acumulat": both_on_raw["+/-"].sum(),
                                 "Partits": partits_junts,
                                 "Trams": trams_junts,
                                 "off eFG%": o_efg,
@@ -651,7 +645,6 @@ elif view == "Tendències de la Lliga":
                         
                         col_best, col_worst = st.columns(2)
                         
-                        # canvi: Nova configuració de columnes que afegeix Partits i Trams (stints) de volum
                         t_config = {
                             "Company": st.column_config.TextColumn("Company", width=240),
                             "+/- Acumulat": st.column_config.NumberColumn("+/- Acum", width="small"),
@@ -683,10 +676,11 @@ elif view == "Tendències de la Lliga":
                             )
                 else:
                     # --- MODE 2: ANALISI CREUAT COMPLET (DOS JUGADORS) ---
-                    both_on = agg_lineups[agg_lineups["Lineup"].str.contains(player_X, na=False) & agg_lineups["Lineup"].str.contains(player_Y, na=False)]
-                    only_X = agg_lineups[agg_lineups["Lineup"].str.contains(player_X, na=False) & ~agg_lineups["Lineup"].str.contains(player_Y, na=False)]
-                    only_Y = agg_lineups[~agg_lineups["Lineup"].str.contains(player_X, na=False) & agg_lineups["Lineup"].str.contains(player_Y, na=False)]
-                    both_off = agg_lineups[~agg_lineups["Lineup"].str.contains(player_X, na=False) & ~agg_lineups["Lineup"].str.contains(player_Y, na=False)]
+                    # Cerca sobre combined_df brut per saber presència de parelles reals a pista
+                    both_on = combined_df[combined_df["Lineup"].str.contains(player_X, na=False) & combined_df["Lineup"].str.contains(player_Y, na=False)]
+                    only_X = combined_df[combined_df["Lineup"].str.contains(player_X, na=False) & ~combined_df["Lineup"].str.contains(player_Y, na=False)]
+                    only_Y = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False) & combined_df["Lineup"].str.contains(player_Y, na=False)]
+                    both_off = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False) & ~combined_df["Lineup"].str.contains(player_Y, na=False)]
                     
                     st.write(f"Rendiment de l'equip segons la presència de **{player_X}** i **{player_Y}**:")
                     
