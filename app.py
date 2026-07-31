@@ -18,7 +18,8 @@ from utils.data_loader import (
     parse_time_to_minutes,
     tag_shot_team,
     load_and_aggregate_season_lineups,
-    get_dir_cache_key
+    get_dir_cache_key,
+    load_all_raw_game_boxscores
 )
 from utils.court_visualizer import draw_boxscore_zone_charts
 
@@ -328,433 +329,460 @@ if view == "Analitzador de Partits":
 elif view == "Tendències de la Lliga":
     st.title(f"Tendències de la Lliga ({selected_season.replace('_', ' ')})")
     
-    if not AGG_FILE or not os.path.exists(AGG_FILE):
-        st.info("No s'ha trobat el fitxer d'acumulats de lliga. Afegeix 'aggregate_season_latest.xlsx' a la seva carpeta.")
+    # canvi: Invalidació intel·ligent per temps de modificació de fitxers de fons
+    pbp_cache_key = get_dir_cache_key(BOX_DIR)
+    raw_games_df = load_all_raw_game_boxscores(BOX_DIR, pbp_cache_key)
+    
+    if raw_games_df.empty:
+        st.info("No s'han trobat dades de boxscores per calcular les tendències de la lliga.")
     else:
-        offense_df, defense_df, master_players = parse_aggregate(AGG_FILE)
+        # canvi: Extracció dinàmica de l'històric de partits de lliga
+        game_options = sorted(list(raw_games_df["Game_Name"].unique()))
         
-        # Configuració de columnes compacta en píxels per a les taules de lliga (sense estirament)
-        league_col_config = {
-            "Team": st.column_config.TextColumn("Team", width=260)
-        }
-        for col in offense_df.columns:
-            if col != "Team":
-                league_col_config[col] = st.column_config.NumberColumn(col, width=65)
+        st.subheader("Filtre dinàmic de partits de la temporada")
+        selected_games = st.multiselect(
+            "Selecciona els partits a incloure en el càlcul acumulador (desmarca partits per excloure'ls dels rànquings)",
+            game_options,
+            default=game_options
+        )
+        
+        if not selected_games:
+            st.warning("Selecciona almenys un partit de lliga per calcular les tendències acumulades.")
+        else:
+            # Filtrem en viu els llançaments ofensius dels partits triats
+            filtered_raw_off = raw_games_df[raw_games_df["Game_Name"].isin(selected_games)].copy()
+            
+            # canvi: Mètode antibales de construcció dinàmica de dades defensives reals (Rival)
+            all_def_rows = []
+            for file_name, group in raw_games_df.groupby("Game_File"):
+                if len(group) == 2:
+                    row0 = group.iloc[0]
+                    row1 = group.iloc[1]
+                    
+                    # Les dades defensives de l'equip A són les dades ofensives del seu oponent (Equip B)
+                    def_row0 = {
+                        "Team": row0["Team"], "Game_Name": row0["Game_Name"], "Game_File": row0["Game_File"],
+                        "OERcal": row0["DERcal"], "DERcal": row0["OERcal"], "POSScal": row0["POSScal"],
+                        "eFG%": row1["eFG%"], "TOV%cal": row1["TOV%cal"], "ORB%cal": row1["ORB%cal"], "FTR": row1["FTR"],
+                        "Rim FGM": row1["Rim FGM"], "Rim FGA": row1["Rim FGA"],
+                        "Paint FGM": row1["Paint FGM"], "Paint FGA": row1["Paint FGA"],
+                        "MR FGM": row1["MR FGM"], "MR FGA": row1["MR FGA"],
+                        "Cor3 FGM": row1["Cor3 FGM"], "Cor3 FGA": row1["Cor3 FGA"],
+                        "ATB3 FGM": row1["ATB3 FGM"], "ATB3 FGA": row1["ATB3 FGA"]
+                    }
+                    def_row1 = {
+                        "Team": row1["Team"], "Game_Name": row1["Game_Name"], "Game_File": row1["Game_File"],
+                        "OERcal": row1["DERcal"], "DERcal": row1["OERcal"], "POSScal": row1["POSScal"],
+                        "eFG%": row0["eFG%"], "TOV%cal": row0["TOV%cal"], "ORB%cal": row0["ORB%cal"], "FTR": row0["FTR"],
+                        "Rim FGM": row0["Rim FGM"], "Rim FGA": row0["Rim FGA"],
+                        "Paint FGM": row0["Paint FGM"], "Paint FGA": row0["Paint FGA"],
+                        "MR FGM": row0["MR FGM"], "MR FGA": row0["MR FGA"],
+                        "Cor3 FGM": row0["Cor3 FGM"], "Cor3 FGA": row0["Cor3 FGA"],
+                        "ATB3 FGM": row0["ATB3 FGM"], "ATB3 FGA": row0["ATB3 FGA"]
+                    }
+                    all_def_rows.append(def_row0)
+                    all_def_rows.append(def_row1)
+                    
+            raw_defense_df = pd.DataFrame(all_def_rows)
+            filtered_raw_def = raw_defense_df[raw_defense_df["Game_Name"].isin(selected_games)].copy()
+            
+            # Columnes d'acumulat per promediar
+            agg_cols = [
+                "POSScal", "OERcal", "DERcal", "eFG%", "TOV%cal", "ORB%cal", "FTR",
+                "Rim FGM", "Rim FGA", "Paint FGM", "Paint FGA", "MR FGM", "MR FGA", "Cor3 FGM", "Cor3 FGA", "ATB3 FGM", "ATB3 FGA"
+            ]
+            for c in agg_cols:
+                if c in filtered_raw_off.columns:
+                    filtered_raw_off[c] = pd.to_numeric(filtered_raw_off[c], errors="coerce").fillna(0.0)
+                if c in filtered_raw_def.columns:
+                    filtered_raw_def[c] = pd.to_numeric(filtered_raw_def[c], errors="coerce").fillna(0.0)
+            
+            # Càlcul dinàmic d'acumulats d'Atac i Defensa en temps real
+            offense_df = filtered_raw_off.groupby("Team").agg({c: "mean" for c in agg_cols if c in filtered_raw_off.columns}).reset_index()
+            defense_df = filtered_raw_def.groupby("Team").agg({c: "mean" for c in agg_cols if c in filtered_raw_def.columns}).reset_index()
+            
+            # Recalcul de percentatges de llançament per a cadascuna de les taules d'atac i defensa
+            for df_t in [offense_df, defense_df]:
+                for zone in ["Rim", "Paint", "MR", "Cor3", "ATB3"]:
+                    fgm_c = f"{zone} FGM"
+                    fga_c = f"{zone} FGA"
+                    pct_c = f"{zone} %"
+                    if fgm_c in df_t.columns and fga_c in df_t.columns:
+                        df_t[pct_c] = (df_t[fgm_c] / df_t[fga_c] * 100.0).fillna(0.0)
 
-        # canvi: Afegida la quarta pestanya per a l'acumulador de quintets multipartit de la Fase 3
-        tab_off, tab_def, tab_chart, tab_lineups = st.tabs([
-            "Classificació d'Atac de la Lliga", 
-            "Classificació de Defensa de la Lliga", 
-            "Gràfic de Dispersió",
-            "Quintets Acumulats"
-        ])
-        
-        with tab_off:
-            st.write("Classificació d'Eficiència de la Lliga (Mètriques Ofensives)")
-            st.dataframe(
-                offense_df.sort_values("OERcal", ascending=False).style.format(precision=2), 
-                use_container_width=False, 
-                height=600,
-                column_config=league_col_config
-            )
-            
-        with tab_def:
-            st.write("Classificació d'Eficiència de la Lliga (Mètriques Defensives)")
-            st.dataframe(
-                defense_df.sort_values("DERcal", ascending=True).style.format(precision=2), 
-                use_container_width=False, 
-                height=600,
-                column_config=league_col_config
-            )
-            
-        with tab_chart:
-            st.write("Gràfic d'Anàlisi Dinàmica de la Lliga")
-            
-            league_df = offense_df.merge(defense_df, on="Team", suffixes=("_Off", "_Def"))
-            
-            x_labels = {
-                "OERcal_Off": "Ràting Ofensiu (OER)",
-                "eFG%_Off": "eFG% Ofensiu",
-                "TOV%cal_Off": "Ràtio de Pèrdues Ofensiu (TO%)",
-                "ORB%cal_Off": "Rebot Ofensiu % (ORB%)",
-                "FTR_Off": "Ràtio de Tirs Lliures Ofensiu (FTR)"
+            # canvi: Mantenim el disseny unificat de columnes en píxels compactes
+            league_col_config = {
+                "Team": st.column_config.TextColumn("Team", width=260)
             }
+            for col in offense_df.columns:
+                if col != "Team":
+                    league_col_config[col] = st.column_config.NumberColumn(col, width=65)
+
+            tab_off, tab_def, tab_chart, tab_lineups = st.tabs([
+                "Classificació d'Atac de la Lliga", 
+                "Classificació de Defensa de la Lliga", 
+                "Gràfic de Dispersió",
+                "Quintets Acumulats"
+            ])
             
-            y_labels = {
-                "DERcal_Off": "Ràting Defensiu (DER)",
-                "eFG%_Def": "eFG% Defensiu (Rival eFG%)",
-                "TOV%cal_Def": "Ràtio de Pèrdues Defensiu (Rival TO%)",
-                "ORB%cal_Def": "Rebot Ofensiu Rival % (Rival ORB%)",
-                "FTR_Def": "Ràtio de Tirs Lliures Defensiu (Rival FTR)"
-            }
-            
-            col_scat1, col_scat2 = st.columns(2)
-            with col_scat1:
-                x_metric = st.selectbox(
-                    "Eix X (Mètrica Ofensiva)", 
-                    list(x_labels.keys()),
-                    format_func=lambda x: x_labels[x]
-                )
-            with col_scat2:
-                y_metric = st.selectbox(
-                    "Eix Y (Mètrica Defensiva)", 
-                    list(y_labels.keys()),
-                    format_func=lambda y: y_labels[y]
-                )
-                
-            mean_x = league_df[x_metric].mean()
-            mean_y = league_df[y_metric].mean()
-            
-            max_dev_x = max(abs(league_df[x_metric] - mean_x))
-            max_dev_y = max(abs(league_df[y_metric] - mean_y))
-            
-            x_range = [mean_x - max_dev_x * 1.15, mean_x + max_dev_x * 1.15]
-            
-            if y_metric in ["DERcal_Off", "eFG%_Def", "FTR_Def"]:
-                y_range = [mean_y + max_dev_y * 1.15, mean_y - max_dev_y * 1.15]
-            else:
-                y_range = [mean_y - max_dev_y * 1.15, mean_y + max_dev_y * 1.15]
-            
-            fig_scat = px.scatter(
-                league_df,
-                x=x_metric,
-                y=y_metric,
-                hover_name="Team",
-                title="Gràfic de Dispersió Comparatiu de la Lliga",
-                labels={
-                    "OERcal_Off": "Ràting Ofensiu (OER)",
-                    "DERcal_Off": "Ràting Defensiu (DER)",
-                    "eFG%_Off": "eFG% Ofensiu",
-                    "eFG%_Def": "eFG% Rival",
-                    "TOV%cal_Off": "TO% Ofensiu",
-                    "TOV%cal_Def": "TO% Rival",
-                    "ORB%cal_Off": "Rebot Ofensiu %",
-                    "ORB%cal_Def": "Rebot Ofensiu Rival %",
-                    "FTR_Off": "FTR",
-                    "FTR_Def": "FTR Defensiu"
-                },
-                color_discrete_sequence=[CB_BLUE]
-            )
-            
-            fig_scat.update_layout(
-                height=650,
-                xaxis=dict(range=x_range),
-                yaxis=dict(range=y_range)
-            )
-            
-            fig_scat.add_vline(x=mean_x, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Atac")
-            fig_scat.add_hline(y=mean_y, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Def")
-                
-            st.plotly_chart(fig_scat, use_container_width=True)
-            
-        with tab_lineups:
-            scout_teams = sorted(list(offense_df["Team"].unique()))
-            selected_agg_team = st.selectbox("Selecciona l'Equip per analitzar els seus Quintets acumulats", scout_teams)
-            
-            pbp_cache_key = get_dir_cache_key(PBP_DIR)
-            
-            # canvi: Desempaquetem la parella de dades (taula acumulada + taula bruta històrica)
-            agg_lineups, combined_df = load_and_aggregate_season_lineups(PBP_DIR, selected_agg_team, pbp_cache_key)
-            
-            if agg_lineups.empty:
-                st.info("No s'han trobat dades de quintets per a aquest equip en els fitxers Play-by-Play d'aquesta temporada.")
-            else:
-                lineup_cols = [
-                    "P1", "P2", "P3", "P4", "P5", "Lineup", "PTS_For", "PTS_Agn", "+/-", 
-                    "RO_For", "RD_For", "RO_Agn", "RD_Agn",
-                    "2PA_For", "2P%_For", "2PA_Agn", "2P%_Agn",
-                    "3PA_For", "3P%_For", "3PA_Agn", "3P%_Agn",
-                    "TOV_For", "TOV_Agn"
-                ]
-                selected_lineup_cols = [c for c in lineup_cols if c in agg_lineups.columns]
-                pct_cols = [c for c in selected_lineup_cols if "%" in c]
-                
-                lineup_col_config = {}
-                for col in selected_lineup_cols:
-                    if col in ["P1", "P2", "P3", "P4", "P5"]:
-                        lineup_col_config[col] = st.column_config.TextColumn(col, width="medium")
-                    elif col == "Lineup":
-                        lineup_col_config[col] = st.column_config.TextColumn(col, width="large")
-                    elif col in pct_cols:
-                        lineup_col_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width="small")
-                    else:
-                        lineup_col_config[col] = st.column_config.NumberColumn(col, width="small")
-                        
-                st.write(f"Rendiment Acumulat dels Quintets de **{selected_agg_team}** (Temporada Completa)")
+            with tab_off:
+                st.write("Classificació d'Eficiència de la Lliga (Mètriques Ofensives recalculades en viu)")
                 st.dataframe(
-                    agg_lineups[selected_lineup_cols], 
-                    use_container_width=False,
-                    column_config=lineup_col_config,
-                    hide_index=True
+                    offense_df.sort_values("OERcal", ascending=False).style.format(precision=2), 
+                    use_container_width=False, 
+                    height=600,
+                    column_config=league_col_config
                 )
                 
-                st.markdown("---")
-                st.subheader("Anàlisi de Coincidència i Rànquing de Parelles")
+            with tab_def:
+                st.write("Classificació d'Eficiència de la Lliga (Mètriques Defensives recalculades en viu)")
+                st.dataframe(
+                    defense_df.sort_values("DERcal", ascending=True).style.format(precision=2), 
+                    use_container_width=False, 
+                    height=600,
+                    column_config=league_col_config
+                )
                 
-                roster = set()
-                for c in ["P1", "P2", "P3", "P4", "P5"]:
-                    if c in agg_lineups.columns:
-                        roster.update(agg_lineups[c].dropna().unique())
-                roster_list = sorted(list(roster))
+            with tab_chart:
+                st.write("Gràfic d'Anàlisi Dinàmica de la Lliga (Exclou partits i veu els canvis en directe)")
                 
-                col_pX, col_pY = st.columns(2)
-                with col_pX:
-                    player_X = st.selectbox("Selecciona el Jugador A (Principal)", roster_list, index=0)
-                with col_pY:
-                    roster_with_none = ["Cap (Només Jugador A)"] + [p for p in roster_list if p != player_X]
-                    player_Y = st.selectbox("Selecciona el Jugador B (Opcional)", roster_with_none, index=0)
+                # Merge offense and defense to get complete metrics
+                league_df = offense_df.merge(defense_df, on="Team", suffixes=("_Off", "_Def"))
+                
+                x_labels = {
+                    "OERcal_Off": "Ràting Ofensiu (OER)",
+                    "eFG%_Off": "eFG% Ofensiu",
+                    "TOV%cal_Off": "Ràtio de Pèrdues Ofensiu (TO%)",
+                    "ORB%cal_Off": "Rebot Ofensiu % (ORB%)",
+                    "FTR_Off": "Ràtio de Tirs Lliures Ofensiu (FTR)"
+                }
+                
+                y_labels = {
+                    "DERcal_Off": "Ràting Defensiu (DER)",
+                    "eFG%_Def": "eFG% Defensiu (Rival eFG%)",
+                    "TOV%cal_Def": "Ràtio de Pèrdues Defensiu (Rival TO%)",
+                    "ORB%cal_Def": "Rebot Ofensiu Rival % (Rival ORB%)",
+                    "FTR_Def": "Ràtio de Tirs Lliures Defensiu (Rival FTR)"
+                }
+                
+                col_scat1, col_scat2 = st.columns(2)
+                with col_scat1:
+                    x_metric = st.selectbox(
+                        "Eix X (Mètrica Ofensiva)", 
+                        list(x_labels.keys()),
+                        format_func=lambda x: x_labels[x]
+                    )
+                with col_scat2:
+                    y_metric = st.selectbox(
+                        "Eix Y (Mètrica Defensiva)", 
+                        list(y_labels.keys()),
+                        format_func=lambda y: y_labels[y]
+                    )
                     
-               # canvi: Algorisme de categorització d'un sol pas per evitar duplicats en rebots i pèrdues
-                def calculate_combo_stats_metrics(df):
-                    if df.empty:
-                        return 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0
-                    
-                    # 1. Classificació dinàmica de l'històric (evita dobles lectures de 'agn' i 'ag')
-                    ro = 0
-                    rd = 0
-                    ro_ag = 0
-                    rd_ag = 0
-                    
-                    tov_for = 0.0
-                    fta_for = 0.0
-                    tov_agn = 0.0
-                    fta_agn = 0.0
-                    
-                    for col in df.columns:
-                        col_lower = col.lower()
-                        col_sum = df[col].sum()
-                        
-                        # Control de pèrdues (TOV)
-                        if "tov" in col_lower:
-                            if "for" in col_lower:
-                                tov_for += col_sum
-                            elif "agn" in col_lower or "ag" in col_lower:
-                                tov_agn += col_sum
-                                
-                        # Control de tirs lliures (FTA)
-                        elif "fta" in col_lower:
-                            if "for" in col_lower:
-                                fta_for += col_sum
-                            elif "agn" in col_lower or "ag" in col_lower:
-                                fta_agn += col_sum
-                                
-                        # Control de rebot ofensiu (RO)
-                        elif any(p in col_lower for p in ["oreb", "orb", "ro_"]):
-                            is_off_reb = any(p in col_lower for p in ["oreb", "orb"]) or col_lower.startswith("ro") or "ro_for" in col_lower or "ro_agn" in col_lower or "ro_ag" in col_lower
-                            if is_off_reb:
-                                if "for" in col_lower:
-                                    ro += int(col_sum)
-                                elif "agn" in col_lower or "ag" in col_lower:
-                                    ro_ag += int(col_sum)
-                                    
-                        # Control de rebot defensiu (RD)
-                        elif any(p in col_lower for p in ["dreb", "drb", "rd_"]):
-                            is_def_reb = any(p in col_lower for p in ["dreb", "drb"]) or col_lower.startswith("rd") or "rd_for" in col_lower or "rd_agn" in col_lower or "rd_ag" in col_lower
-                            if is_def_reb:
-                                if "for" in col_lower:
-                                    rd += int(col_sum)
-                                elif "agn" in col_lower or "ag" in col_lower:
-                                    rd_ag += int(col_sum)
-
-                    # 2. Recompte estricte de llançaments per zones
-                    def sum_cols_matching(patterns):
-                        total = 0.0
-                        for col in df.columns:
-                            col_lower = col.lower()
-                            if all(p in col_lower for p in patterns):
-                                total += df[col].sum()
-                        return total
-
-                    rim_fga_for = sum_cols_matching(["rim", "fga", "for"])
-                    rim_fgm_for = sum_cols_matching(["rim", "fgm", "for"])
-                    paint_fga_for = sum_cols_matching(["paint", "fga", "for"])
-                    paint_fgm_for = sum_cols_matching(["paint", "fgm", "for"])
-                    mr_fga_for = sum_cols_matching(["mr", "fga", "for"])
-                    mr_fgm_for = sum_cols_matching(["mr", "fgm", "for"])
-                    cor_fga_for = sum_cols_matching(["cor", "fga", "for"])
-                    cor_fgm_for = sum_cols_matching(["cor", "fgm", "for"])
-                    atb_fga_for = sum_cols_matching(["atb", "fga", "for"])
-                    atb_fgm_for = sum_cols_matching(["atb", "fgm", "for"])
-                    
-                    rim_fga_agn = sum_cols_matching(["rim", "fga", "ag"])
-                    rim_fgm_agn = sum_cols_matching(["rim", "fgm", "ag"])
-                    paint_fga_agn = sum_cols_matching(["paint", "fga", "ag"])
-                    paint_fgm_agn = sum_cols_matching(["paint", "fgm", "ag"])
-                    mr_fga_agn = sum_cols_matching(["mr", "fga", "ag"])
-                    mr_fgm_agn = sum_cols_matching(["mr", "fgm", "ag"])
-                    cor_fga_agn = sum_cols_matching(["cor", "fga", "ag"])
-                    cor_fgm_agn = sum_cols_matching(["cor", "fgm", "ag"])
-                    atb_fga_agn = sum_cols_matching(["atb", "fga", "ag"])
-                    atb_fgm_agn = sum_cols_matching(["atb", "fgm", "ag"])
-                    
-                    # 3. Mètriques de 2P i 3P totals
-                    fga_2p_for = rim_fga_for + paint_fga_for + mr_fga_for
-                    fgm_2p_for = rim_fgm_for + paint_fgm_for + mr_fgm_for
-                    fga_3p_for = cor_fga_for + atb_fga_for
-                    fgm_3p_for = cor_fgm_for + atb_fgm_for
-                    
-                    fga_for = fga_2p_for + fga_3p_for
-                    fgm_for_weighted = fgm_2p_for + 1.5 * fgm_3p_for
-                    
-                    fga_2p_agn = rim_fga_agn + paint_fga_agn + mr_fga_agn
-                    fgm_2p_agn = rim_fgm_agn + paint_fgm_agn + mr_fgm_agn
-                    fga_3p_agn = cor_fga_agn + atb_fga_agn
-                    fgm_3p_agn = cor_fgm_agn + atb_fgm_agn
-                    
-                    fga_agn = fga_2p_agn + fga_3p_agn
-                    fgm_agn_weighted = fgm_2p_agn + 1.5 * fgm_3p_agn
-                    
-                    # Càlculs de ràtio final
-                    off_efg = (fgm_for_weighted / fga_for * 100.0) if fga_for > 0 else 0.0
-                    def_efg = (fgm_agn_weighted / fga_agn * 100.0) if fga_agn > 0 else 0.0
-                    
-                    poss_for = fga_for + 0.44 * fta_for + tov_for
-                    to_pct = (tov_for / poss_for * 100.0) if poss_for > 0 else 0.0
-                    
-                    poss_agn = fga_agn + 0.44 * fta_agn + tov_agn
-                    to_pct_ag = (tov_agn / poss_agn * 100.0) if poss_agn > 0 else 0.0
-                    
-                    return off_efg, def_efg, to_pct, to_pct_ag, ro, ro_ag, rd, rd_ag
-
-                if player_Y == "Cap (Només Jugador A)":
-                    # --- MODE 1: ANALISI ON/OFF (UN JUGADOR) ---
-                    # Cerca programàtica sobre combined_df brut per saber minuts totals de pista de l' staff
-                    on_court = combined_df[combined_df["Lineup"].str.contains(player_X, na=False)]
-                    off_court = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False)]
-                    
-                    st.write(f"Rendiment global d'On/Off per a **{player_X}**:")
-                    col_on, col_off = st.columns(2)
-                    with col_on:
-                        plus_on = on_court["+/-"].sum() if not on_court.empty else 0.0
-                        st.metric(
-                            label=f"A Pista ({player_X})", 
-                            value=f"{plus_on:+.1f}",
-                            help=f"Equip jugant amb el Jugador A a pista. Punts a favor: {on_court['PTS_For'].sum():.0f}, Punts en contra: {on_court['PTS_Agn'].sum():.0f}"
-                        )
-                    with col_off:
-                        plus_off = off_court["+/-"].sum() if not off_court.empty else 0.0
-                        st.metric(
-                            label=f"A la Banqueta (Off-Court)", 
-                            value=f"{plus_off:+.1f}",
-                            help=f"Equip jugant sense el Jugador A a pista. Punts a favor: {off_court['PTS_For'].sum():.0f}, Punts en contra: {off_court['PTS_Agn'].sum():.0f}"
-                        )
-                        
-                    st.write("")
-                    teammate_stats = []
-                    for teammate in roster_list:
-                        if teammate == player_X:
-                            continue
-                        
-                        # canvi: Càlcul sobre combined_df brut per a una precisió del 100% de partits i rotacions (trams)
-                        both_on_raw = combined_df[
-                            combined_df["Lineup"].str.contains(player_X, na=False) & 
-                            combined_df["Lineup"].str.contains(teammate, na=False)
-                        ]
-                        
-                        if not both_on_raw.empty:
-                            o_efg, d_efg, to_p, to_pa, ro, ro_ag, rd, rd_ag = calculate_combo_stats_metrics(both_on_raw)
-                            
-                            # canvi: Detector de partits únics basat en Setmana_Rival de les línies de combined_df
-                            if "Week" in both_on_raw.columns and "Rival" in both_on_raw.columns:
-                                both_on_raw = both_on_raw.copy()
-                                both_on_raw["Game_ID"] = both_on_raw["Week"].astype(str) + "_" + both_on_raw["Rival"].astype(str)
-                                partits_junts = int(both_on_raw["Game_ID"].nunique())
-                            elif "Rival" in both_on_raw.columns:
-                                partits_junts = int(both_on_raw["Rival"].nunique())
-                            else:
-                                partits_junts = 1
-                                
-                            trams_junts = int(len(both_on_raw))
-                            
-                            teammate_stats.append({
-                                "Company": teammate,
-                                "+/- Acumulat": both_on_raw["+/-"].sum(),
-                                "Partits": partits_junts,
-                                "Trams": trams_junts,
-                                "off eFG%": o_efg,
-                                "def eFG%": d_efg,
-                                "to%": to_p,
-                                "to%ag": to_pa,
-                                "ro": ro,
-                                "ro Ag": ro_ag,
-                                "rd": rd,
-                                "rd ag": rd_ag
-                            })
-                            
-                    if teammate_stats:
-                        teammate_df = pd.DataFrame(teammate_stats).sort_values("+/- Acumulat", ascending=False)
-                        
-                        col_best, col_worst = st.columns(2)
-                        
-                        t_config = {
-                            "Company": st.column_config.TextColumn("Company", width=240),
-                            "+/- Acumulat": st.column_config.NumberColumn("+/- Acum", width="small"),
-                            "Partits": st.column_config.NumberColumn("Partits", width="small"),
-                            "Trams": st.column_config.NumberColumn("Trams", width="small")
-                        }
-                        for col in ["off eFG%", "def eFG%", "to%", "to%ag"]:
-                            t_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width="small")
-                        for col in ["ro", "ro Ag", "rd", "rd ag"]:
-                            t_config[col] = st.column_config.NumberColumn(col, width="small")
-                            
-                        with col_best:
-                            st.write(f"👍 **Millors companyies per a {player_X}**")
-                            st.dataframe(
-                                teammate_df.head(3), 
-                                use_container_width=False, 
-                                hide_index=True, 
-                                column_config=t_config
-                            )
-                        with col_best:
-                            pass
-                        with col_worst:
-                            st.write(f"👎 **Pitjors companyies per a {player_X}**")
-                            st.dataframe(
-                                teammate_df.tail(3).sort_values("+/- Acumulat", ascending=True), 
-                                use_container_width=False, 
-                                hide_index=True, 
-                                column_config=t_config
-                            )
+                mean_x = league_df[x_metric].mean()
+                mean_y = league_df[y_metric].mean()
+                
+                max_dev_x = max(abs(league_df[x_metric] - mean_x))
+                max_dev_y = max(abs(league_df[y_metric] - mean_y))
+                
+                x_range = [mean_x - max_dev_x * 1.15, mean_x + max_dev_x * 1.15]
+                
+                if y_metric in ["DERcal_Off", "eFG%_Def", "FTR_Def"]:
+                    y_range = [mean_y + max_dev_y * 1.15, mean_y - max_dev_y * 1.15]
                 else:
-                    # --- MODE 2: ANALISI CREUAT COMPLET (DOS JUGADORS) ---
-                    # Cerca sobre combined_df brut per saber presència de parelles reals a pista
-                    both_on = combined_df[combined_df["Lineup"].str.contains(player_X, na=False) & combined_df["Lineup"].str.contains(player_Y, na=False)]
-                    only_X = combined_df[combined_df["Lineup"].str.contains(player_X, na=False) & ~combined_df["Lineup"].str.contains(player_Y, na=False)]
-                    only_Y = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False) & combined_df["Lineup"].str.contains(player_Y, na=False)]
-                    both_off = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False) & ~combined_df["Lineup"].str.contains(player_Y, na=False)]
+                    y_range = [mean_y - max_dev_y * 1.15, mean_y + max_dev_y * 1.15]
+                
+                fig_scat = px.scatter(
+                    league_df,
+                    x=x_metric,
+                    y=y_metric,
+                    hover_name="Team",
+                    title="Gràfic de Dispersió Comparatiu de la Lliga",
+                    labels={
+                        "OERcal_Off": "Ràting Ofensiu (OER)",
+                        "DERcal_Off": "Ràting Defensiu (DER)",
+                        "eFG%_Off": "eFG% Ofensiu",
+                        "eFG%_Def": "eFG% Rival",
+                        "TOV%cal_Off": "TO% Ofensiu",
+                        "TOV%cal_Def": "TO% Rival",
+                        "ORB%cal_Off": "Rebot Ofensiu %",
+                        "ORB%cal_Def": "Rebot Ofensiu Rival %",
+                        "FTR_Off": "FTR",
+                        "FTR_Def": "FTR Defensiu"
+                    },
+                    color_discrete_sequence=[CB_BLUE]
+                )
+                
+                fig_scat.update_layout(
+                    height=650,
+                    xaxis=dict(range=x_range),
+                    yaxis=dict(range=y_range)
+                )
+                
+                fig_scat.add_vline(x=mean_x, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Atac")
+                fig_scat.add_hline(y=mean_y, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Def")
                     
-                    st.write(f"Rendiment de l'equip segons la presència de **{player_X}** i **{player_Y}**:")
+                st.plotly_chart(fig_scat, use_container_width=True)
+                
+            with tab_lineups:
+                scout_teams = sorted(list(offense_df["Team"].unique()))
+                selected_agg_team = st.selectbox("Selecciona l'Equip per analitzar els seus Quintets acumulats", scout_teams)
+                
+                pbp_cache_key = get_dir_cache_key(PBP_DIR)
+                agg_lineups, combined_df = load_and_aggregate_season_lineups(PBP_DIR, selected_agg_team, pbp_cache_key)
+                
+                if agg_lineups.empty:
+                    st.info("No s'han trobat dades de quintets per a aquest equip en els fitxers Play-by-Play d'aquesta temporada.")
+                else:
+                    lineup_cols = [
+                        "P1", "P2", "P3", "P4", "P5", "Lineup", "PTS_For", "PTS_Agn", "+/-", 
+                        "RO_For", "RD_For", "RO_Agn", "RD_Agn",
+                        "2PA_For", "2P%_For", "2PA_Agn", "2P%_Agn",
+                        "3PA_For", "3P%_For", "3PA_Agn", "3P%_Agn",
+                        "TOV_For", "TOV_Agn"
+                    ]
+                    selected_lineup_cols = [c for c in lineup_cols if c in agg_lineups.columns]
+                    pct_cols = [c for c in selected_lineup_cols if "%" in c]
                     
-                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                    lineup_col_config = {}
+                    for col in selected_lineup_cols:
+                        if col in ["P1", "P2", "P3", "P4", "P5"]:
+                            lineup_col_config[col] = st.column_config.TextColumn(col, width="medium")
+                        elif col == "Lineup":
+                            lineup_col_config[col] = st.column_config.TextColumn(col, width="large")
+                        elif col in pct_cols:
+                            lineup_col_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width="small")
+                        else:
+                            lineup_col_config[col] = st.column_config.NumberColumn(col, width="small")
+                            
+                    st.write(f"Rendiment Acumulat dels Quintets de **{selected_agg_team}** (Temporada Completa)")
+                    st.dataframe(
+                        agg_lineups[selected_lineup_cols], 
+                        use_container_width=False,
+                        column_config=lineup_col_config,
+                        hide_index=True
+                    )
                     
-                    with col_m1:
-                        plus_minus = both_on["+/-"].sum() if not both_on.empty else 0.0
-                        st.metric(
-                            label="Junts a Pista", 
-                            value=f"{plus_minus:+.1f}",
-                            help=f"Ambdós jugadors jugant junts. Punts a favor: {both_on['PTS_For'].sum():.0f}, Punts en contra: {both_on['PTS_Agn'].sum():.0f}"
-                        )
-                    with col_m2:
-                        plus_minus = only_X["+/-"].sum() if not only_X.empty else 0.0
-                        st.metric(
-                            label=f"Només {player_X}", 
-                            value=f"{plus_minus:+.1f}",
-                            help=f"Jugador X jugant sense Jugador Y. Punts a favor: {only_X['PTS_For'].sum():.0f}, Punts en contra: {only_X['PTS_Agn'].sum():.0f}"
-                        )
-                    with col_m3:
-                        plus_minus = only_Y["+/-"].sum() if not only_Y.empty else 0.0
-                        st.metric(
-                            label=f"Només {player_Y}", 
-                            value=f"{plus_minus:+.1f}",
-                            help=f"Jugador Y jugant sense Jugador X. Punts a favor: {only_Y['PTS_For'].sum():.0f}, Punts en contra: {only_Y['PTS_Agn'].sum():.0f}"
-                        )
-                    with col_m4:
-                        plus_minus = both_off["+/-"].sum() if not both_off.empty else 0.0
-                        st.metric(
-                            label="Ambdós a la Banqueta", 
-                            value=f"{plus_minus:+.1f}",
-                            help=f"Cap dels dos jugadors a pista. Punts a favor: {both_off['PTS_For'].sum():.0f}, Punts en contra: {both_off['PTS_Agn'].sum():.0f}"
-                        )
+                    st.markdown("---")
+                    st.subheader("Anàlisi de Coincidència i Rànquing de Parelles")
+                    
+                    roster = set()
+                    for c in ["P1", "P2", "P3", "P4", "P5"]:
+                        if c in agg_lineups.columns:
+                            roster.update(agg_lineups[c].dropna().unique())
+                    roster_list = sorted(list(roster))
+                    
+                    col_pX, col_pY = st.columns(2)
+                    with col_pX:
+                        player_X = st.selectbox("Selecciona el Jugador A (Principal)", roster_list, index=0)
+                    with col_pY:
+                        roster_with_none = ["Cap (Només Jugador A)"] + [p for p in roster_list if p != player_X]
+                        player_Y = st.selectbox("Selecciona el Jugador B (Opcional)", roster_with_none, index=0)
+                        
+                    def calculate_combo_stats_metrics(df):
+                        if df.empty:
+                            return 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0
+                        
+                        def sum_cols_matching(patterns):
+                            total = 0.0
+                            for col in df.columns:
+                                col_lower = col.lower()
+                                if all(p in col_lower for p in patterns):
+                                    total += df[col].sum()
+                            return total
+
+                        rim_fga_for = sum_cols_matching(["rim", "fga", "for"])
+                        rim_fgm_for = sum_cols_matching(["rim", "fgm", "for"])
+                        paint_fga_for = sum_cols_matching(["paint", "fga", "for"])
+                        paint_fgm_for = sum_cols_matching(["paint", "fgm", "for"])
+                        mr_fga_for = sum_cols_matching(["mr", "fga", "for"])
+                        mr_fgm_for = sum_cols_matching(["mr", "fgm", "for"])
+                        cor_fga_for = sum_cols_matching(["cor", "fga", "for"])
+                        cor_fgm_for = sum_cols_matching(["cor", "fgm", "for"])
+                        atb_fga_for = sum_cols_matching(["atb", "fga", "for"])
+                        atb_fgm_for = sum_cols_matching(["atb", "fgm", "for"])
+                        
+                        rim_fga_agn = sum_cols_matching(["rim", "fga", "ag"])
+                        rim_fgm_agn = sum_cols_matching(["rim", "fgm", "ag"])
+                        paint_fga_agn = sum_cols_matching(["paint", "fga", "ag"])
+                        paint_fgm_agn = sum_cols_matching(["paint", "fgm", "ag"])
+                        mr_fga_agn = sum_cols_matching(["mr", "fga", "ag"])
+                        mr_fgm_agn = sum_cols_matching(["mr", "fgm", "ag"])
+                        cor_fga_agn = sum_cols_matching(["cor", "fga", "ag"])
+                        cor_fgm_agn = sum_cols_matching(["cor", "fgm", "ag"])
+                        atb_fga_agn = sum_cols_matching(["atb", "fga", "ag"])
+                        atb_fgm_agn = sum_cols_matching(["atb", "fgm", "ag"])
+                        
+                        fga_2p_for = rim_fga_for + paint_fga_for + mr_fga_for
+                        fgm_2p_for = rim_fgm_for + paint_fgm_for + mr_fgm_for
+                        fga_3p_for = cor_fga_for + atb_fga_for
+                        fgm_3p_for = cor_fgm_for + atb_fgm_for
+                        
+                        fga_for = fga_2p_for + fga_3p_for
+                        fgm_for_weighted = fgm_2p_for + 1.5 * fgm_3p_for
+                        
+                        fga_2p_agn = rim_fga_agn + paint_fga_agn + mr_fga_agn
+                        fgm_2p_agn = rim_fgm_agn + paint_fgm_agn + mr_fgm_agn
+                        fga_3p_agn = cor_fga_agn + atb_fga_agn
+                        fgm_3p_agn = cor_fgm_agn + atb_fgm_agn
+                        
+                        fga_agn = fga_2p_agn + fga_3p_agn
+                        fgm_agn_weighted = fgm_2p_agn + 1.5 * fgm_3p_agn
+                        
+                        off_efg = (fgm_for_weighted / fga_for * 100.0) if fga_for > 0 else 0.0
+                        def_efg = (fgm_agn_weighted / fga_agn * 100.0) if fga_agn > 0 else 0.0
+                        
+                        tov_for = sum_cols_matching(["tov", "for"])
+                        fta_for = sum_cols_matching(["fta", "for"])
+                        poss_for = fga_for + 0.44 * fta_for + tov_for
+                        to_pct = (tov_for / poss_for * 100.0) if poss_for > 0 else 0.0
+                        
+                        tov_agn = sum_cols_matching(["tov", "agn"]) + sum_cols_matching(["tov", "ag"])
+                        fta_agn = sum_cols_matching(["fta", "agn"]) + sum_cols_matching(["fta", "ag"])
+                        poss_agn = fga_agn + 0.44 * fta_agn + tov_agn
+                        to_pct_ag = (tov_agn / poss_agn * 100.0) if poss_agn > 0 else 0.0
+                        
+                        ro = int(sum_cols_matching(["ro", "for"]) + sum_cols_matching(["oreb", "for"]) + sum_cols_matching(["orb", "for"]))
+                        rd = int(sum_cols_matching(["rd", "for"]) + sum_cols_matching(["dreb", "for"]) + sum_cols_matching(["drb", "for"]))
+                        
+                        ro_ag = int(sum_cols_matching(["ro", "agn"]) + sum_cols_matching(["oreb", "agn"]) + sum_cols_matching(["orb", "agn"]) + sum_cols_matching(["ro", "ag"]) + sum_cols_matching(["oreb", "ag"]) + sum_cols_matching(["orb", "ag"]))
+                        rd_ag = int(sum_cols_matching(["rd", "agn"]) + sum_cols_matching(["dreb", "agn"]) + sum_cols_matching(["drb", "agn"]) + sum_cols_matching(["rd", "ag"]) + sum_cols_matching(["dreb", "ag"]) + sum_cols_matching(["drb", "ag"]))
+                        
+                        return off_efg, def_efg, to_pct, to_pct_ag, ro, ro_ag, rd, rd_ag
+
+                    if player_Y == "Cap (Només Jugador A)":
+                        on_court = combined_df[combined_df["Lineup"].str.contains(player_X, na=False)]
+                        off_court = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False)]
+                        
+                        st.write(f"Rendiment global d'On/Off per a **{player_X}**:")
+                        col_on, col_off = st.columns(2)
+                        with col_on:
+                            plus_on = on_court["+/-"].sum() if not on_court.empty else 0.0
+                            st.metric(
+                                label=f"A Pista ({player_X})", 
+                                value=f"{plus_on:+.1f}",
+                                help=f"Equip jugant amb el Jugador A a pista. Punts a favor: {on_court['PTS_For'].sum():.0f}, Punts en contra: {on_court['PTS_Agn'].sum():.0f}"
+                            )
+                        with col_off:
+                            plus_off = off_court["+/-"].sum() if not off_court.empty else 0.0
+                            st.metric(
+                                label=f"A la Banqueta (Off-Court)", 
+                                value=f"{plus_off:+.1f}",
+                                help=f"Equip jugant sense el Jugador A a pista. Punts a favor: {off_court['PTS_For'].sum():.0f}, Punts en contra: {off_court['PTS_Agn'].sum():.0f}"
+                            )
+                            
+                        st.write("")
+                        teammate_stats = []
+                        for teammate in roster_list:
+                            if teammate == player_X:
+                                continue
+                            
+                            both_on_raw = combined_df[
+                                combined_df["Lineup"].str.contains(player_X, na=False) & 
+                                combined_df["Lineup"].str.contains(teammate, na=False)
+                            ]
+                            
+                            if not both_on_raw.empty:
+                                o_efg, d_efg, to_p, to_pa, ro, ro_ag, rd, rd_ag = calculate_combo_stats_metrics(both_on_raw)
+                                
+                                if "Week" in both_on_raw.columns and "Rival" in both_on_raw.columns:
+                                    both_on_raw = both_on_raw.copy()
+                                    both_on_raw["Game_ID"] = both_on_raw["Week"].astype(str) + "_" + both_on_raw["Rival"].astype(str)
+                                    partits_junts = int(both_on_raw["Game_ID"].nunique())
+                                elif "Rival" in both_on_raw.columns:
+                                    partits_junts = int(both_on_raw["Rival"].nunique())
+                                else:
+                                    partits_junts = 1
+                                    
+                                trams_junts = int(len(both_on_raw))
+                                
+                                teammate_stats.append({
+                                    "Company": teammate,
+                                    "+/- Acumulat": both_on_raw["+/-"].sum(),
+                                    "Partits": partits_junts,
+                                    "Trams": trams_junts,
+                                    "off eFG%": o_efg,
+                                    "def eFG%": d_efg,
+                                    "to%": to_p,
+                                    "to%ag": to_pa,
+                                    "ro": ro,
+                                    "ro Ag": ro_ag,
+                                    "rd": rd,
+                                    "rd ag": rd_ag
+                                })
+                                
+                        if teammate_stats:
+                            teammate_df = pd.DataFrame(teammate_stats).sort_values("+/- Acumulat", ascending=False)
+                            
+                            col_best, col_worst = st.columns(2)
+                            
+                            t_config = {
+                                "Company": st.column_config.TextColumn("Company", width=240),
+                                "+/- Acumulat": st.column_config.NumberColumn("+/- Acum", width="small"),
+                                "Partits": st.column_config.NumberColumn("Partits", width="small"),
+                                "Trams": st.column_config.NumberColumn("Trams", width="small")
+                            }
+                            for col in ["off eFG%", "def eFG%", "to%", "to%ag"]:
+                                t_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width="small")
+                            for col in ["ro", "ro Ag", "rd", "rd ag"]:
+                                t_config[col] = st.column_config.NumberColumn(col, width="small")
+                                
+                            with col_best:
+                                st.write(f"👍 **Millors companyies per a {player_X}**")
+                                st.dataframe(
+                                    teammate_df.head(3), 
+                                    use_container_width=False, 
+                                    hide_index=True, 
+                                    column_config=t_config
+                                )
+                            with col_best:
+                                pass
+                            with col_worst:
+                                st.write(f"👎 **Pitjors companyies per a {player_X}**")
+                                st.dataframe(
+                                    teammate_df.tail(3).sort_values("+/- Acumulat", ascending=True), 
+                                    use_container_width=False, 
+                                    hide_index=True, 
+                                    column_config=t_config
+                                )
+                    else:
+                        both_on = combined_df[combined_df["Lineup"].str.contains(player_X, na=False) & combined_df["Lineup"].str.contains(player_Y, na=False)]
+                        only_X = combined_df[combined_df["Lineup"].str.contains(player_X, na=False) & ~combined_df["Lineup"].str.contains(player_Y, na=False)]
+                        only_Y = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False) & combined_df["Lineup"].str.contains(player_Y, na=False)]
+                        both_off = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False) & ~combined_df["Lineup"].str.contains(player_Y, na=False)]
+                        
+                        st.write(f"Rendiment de l'equip segons la presència de **{player_X}** i **{player_Y}**:")
+                        
+                        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                        
+                        with col_m1:
+                            plus_minus = both_on["+/-"].sum() if not both_on.empty else 0.0
+                            st.metric(
+                                label="Junts a Pista", 
+                                value=f"{plus_minus:+.1f}",
+                                help=f"Ambdós jugadors jugant junts. Punts a favor: {both_on['PTS_For'].sum():.0f}, Punts en contra: {both_on['PTS_Agn'].sum():.0f}"
+                            )
+                        with col_m2:
+                            plus_minus = only_X["+/-"].sum() if not only_X.empty else 0.0
+                            st.metric(
+                                label=f"Només {player_X}", 
+                                value=f"{plus_minus:+.1f}",
+                                help=f"Jugador X jugant sense Jugador Y. Punts a favor: {only_X['PTS_For'].sum():.0f}, Punts en contra: {only_X['PTS_Agn'].sum():.0f}"
+                            )
+                        with col_m3:
+                            plus_minus = only_Y["+/-"].sum() if not only_Y.empty else 0.0
+                            st.metric(
+                                label=f"Només {player_Y}", 
+                                value=f"{plus_minus:+.1f}",
+                                help=f"Jugador Y jugant sense Jugador X. Punts a favor: {only_Y['PTS_For'].sum():.0f}, Punts en contra: {only_Y['PTS_Agn'].sum():.0f}"
+                            )
+                        with col_m4:
+                            plus_minus = both_off["+/-"].sum() if not both_off.empty else 0.0
+                            st.metric(
+                                label="Ambdós a la Banqueta", 
+                                value=f"{plus_minus:+.1f}",
+                                help=f"Cap dels dos jugadors a pista. Punts a favor: {both_off['PTS_For'].sum():.0f}, Punts en contra: {both_off['PTS_Agn'].sum():.0f}"
+                            )
 # ----------------- VIEW 3: PLAYER SHOOTING INDEX -----------------
 elif view == "Índex de Tir dels Jugadors":
     st.title(f"Índex de Tir dels Jugadors ({selected_season.replace('_', ' ')})")

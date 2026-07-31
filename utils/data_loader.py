@@ -566,3 +566,37 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
         
     # canvi: Retornem la parella (taula acumulada + taula de fons sencera) per permetre creuaments
     return aggregated, combined_df
+@st.cache_data
+def load_all_raw_game_boxscores(boxscore_dir, cache_key):
+    """
+    Scans the boxscores directory and reads the team-level summaries 
+    for all games, returning a combined DataFrame of raw game-by-game team totals.
+    """
+    if not boxscore_dir or not os.path.exists(boxscore_dir):
+        return pd.DataFrame()
+        
+    files = glob.glob(os.path.join(boxscore_dir, "*.xlsx"))
+    all_game_summaries = []
+    
+    for f in files:
+        try:
+            # Read the team aggregate totals (first 2 rows)
+            team_df = pd.read_excel(f, header=0, nrows=2)
+            team_df.columns = team_df.columns.str.strip()
+            
+            # Clean and format game names
+            base = os.path.basename(f)
+            game_name = base.replace("boxscore_", "").replace(".xlsx", "").replace("_", " ").title()
+            game_name = " ".join(game_name.split())
+            
+            team_df["Game_File"] = base
+            team_df["Game_Name"] = game_name
+            
+            all_game_summaries.append(team_df)
+        except Exception:
+            continue
+            
+    if not all_game_summaries:
+        return pd.DataFrame()
+        
+    return pd.concat(all_game_summaries, ignore_index=True)
