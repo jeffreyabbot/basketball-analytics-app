@@ -490,16 +490,25 @@ def load_all_raw_game_boxscores(boxscore_dir, pbp_dir, cache_key):
             t2_name = str(team_df.iloc[1].get("Team", "")).strip()
             pbp_path = find_best_matching_pbp(t1_name, t2_name, pbp_dir, base)
             
+            # canvi: Cerca de capçalera intel·ligent per extreure el valor numèric real en lloc de la paraula "Week"
             week_val = None
             if pbp_path and os.path.exists(pbp_path):
                 try:
                     xls = pd.ExcelFile(pbp_path)
                     if len(xls.sheet_names) >= 3:
-                        df_lin = pd.read_excel(xls, sheet_name=2, header=None, nrows=5)
-                        # El número de jornada es troba habitualment a la segona columna
-                        week_val = df_lin.iloc[0, 1]
+                        df_lin = pd.read_excel(xls, sheet_name=2, nrows=5)
+                        # Netegem els noms de les columnes per cercar "week" de manera robusta
+                        df_lin.columns = df_lin.columns.str.strip().str.lower()
+                        week_cols = [c for c in df_lin.columns if "week" in str(c)]
+                        
+                        if week_cols and not df_lin.empty:
+                            week_val = df_lin[week_cols[0]].iloc[0]
+                        else:
+                            # Fallback a la segona columna de fons en cas d'un disseny sense nom de capçalera
+                            week_val = df_lin.iloc[0, 1]
                 except Exception:
                     pass
+
                     
             # Fallback si no troba el PBP de fons
             if week_val is None or pd.isna(week_val):
