@@ -3,7 +3,6 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import os
-import numpy as np
 
 from utils.data_loader import (
     get_available_seasons, 
@@ -87,7 +86,7 @@ view = st.sidebar.radio(
     ["Analitzador de Partits", "Tendències de la Lliga", "Índex de Tir dels Jugadors", "Scouting de Rivals"]
 )
 
-# ----------------- VIEW 1: GAME ANALITZADOR -----------------
+# ----------------- VIEW 1: GAME ANALYZER -----------------
 if view == "Analitzador de Partits":
     st.title(f"Analitzador de Partits ({selected_season.replace('_', ' ')})")
     
@@ -135,7 +134,6 @@ if view == "Analitzador de Partits":
             
             # Calculate standard regulation/OT game duration
             estimated_game_mins = estimate_game_duration(t1_players, t2_players, pbp_df_param)
-        
             
             # --- Subsection 1: Advanced Metrics (OER/DER/PACE) ---
             st.subheader("Ràtings d'Eficiència de l'Equip")
@@ -154,19 +152,12 @@ if view == "Analitzador de Partits":
                 st.metric(
                     label="Durada del Partit", 
                     value=f"{estimated_game_mins} min", 
-                    help=f"Durada d'aquest partit basada en els períodes jugats."
+                    help="Durada d'aquest partit basada en els períodes jugats."
                 )
                 
             # --- Subsection 2: Four Factors Comparison ---
             st.subheader("Comparació dels 4 Factors")
             factors = ["eFG%", "TOV%cal", "ORB%cal", "FTR"]
-            
-            factor_ranges = {
-                "eFG%": [0.0, 80.0],      # eFG% de 0 a 80%
-                "TOV%cal": [0.0, 40.0],   # TO% de 0 a 40%
-                "ORB%cal": [0.0, 60.0],   # ORB% de 0 a 60%
-                "FTR": [0.0, 0.80]        # FTR de 0 a 0.80
-            }
             
             col_f1, col_f2 = st.columns(2)
             for i, factor in enumerate(factors):
@@ -186,22 +177,20 @@ if view == "Analitzador de Partits":
                         height=200,
                         margin=dict(l=20, r=20, t=40, b=20),
                         plot_bgcolor="rgba(0,0,0,0)",
-                        xaxis=dict(showgrid=False, range=factor_ranges[factor])
+                        xaxis=dict(showgrid=False, range=[0.0, 80.0] if factor != "FTR" else [0.0, 0.80])
                     )
-                    st.plotly_chart(fig, use_container_width=False)
+                    st.plotly_chart(fig, use_container_width=True)
 
             # --- Subsection 3: Dynamic Boxscores View ---
             st.markdown("---")
             st.subheader("Perfils de Rendiment dels Jugadors")
             
-            # View Selector for Boxscores to prevent page horizontal scroll
             stat_view = st.radio(
                 "Selecciona la vista d'estadístiques", 
                 ["Estadístiques Estàndard", "Mètriques Avançades", "Sèries per Zona de Tir"], 
                 horizontal=True
             )
             
-            # Standard columns groupings
             standard_cols = ["JUGADOR", "TIME", "PTS", "2PM", "2PA", "3PM", "3PA", "FTM", "FTA", "ORB", "DRB", "AS", "STL", "BLK", "TO", "F", "F+"]
             advanced_cols = ["JUGADOR", "TIME", "EFI", "USG%cal", "eFG%", "TS%", "FTR", "TO%cal", "PTS/PLAYcal", "TOpts", "2CPts"]
             zone_cols = ["JUGADOR", "TIME", "Rim FGM", "Rim FGA", "Rim %", "Paint FGM", "Paint FGA", "Paint %", "MR FGM", "MR FGA", "MR %", "Cor3 FGM", "Cor3 FGA", "Cor3 %", "ATB3 FGM", "ATB3 FGA", "ATB3 %"]
@@ -210,7 +199,6 @@ if view == "Analitzador de Partits":
             
             for tab, players_df in zip([team_tab1, team_tab2], [t1_players, t2_players]):
                 with tab:
-                    # Filter columns dynamically based on selection and file headers
                     if stat_view == "Estadístiques Estàndard":
                         selected_cols = [c for c in standard_cols if c in players_df.columns]
                     elif stat_view == "Mètriques Avançades":
@@ -218,16 +206,15 @@ if view == "Analitzador de Partits":
                     else:
                         selected_cols = [c for c in zone_cols if c in players_df.columns]
                         
-                    # canvi: Disseny dinàmic de columnes que manté JUGADOR gran i encongeix les numèriques
                     col_config = {
-                        "JUGADOR": st.column_config.TextColumn("JUGADOR", width="large")
+                        "JUGADOR": st.column_config.TextColumn("JUGADOR", width=260)
                     }
                     for col in selected_cols:
                         if col != "JUGADOR":
                             if col == "TIME":
-                                col_config[col] = st.column_config.TextColumn(col, width="small")
+                                col_config[col] = st.column_config.TextColumn(col, width=65)
                             else:
-                                col_config[col] = st.column_config.NumberColumn(col, width="small")
+                                col_config[col] = st.column_config.NumberColumn(col, width=55)
                                 
                     st.dataframe(
                         players_df[selected_cols].style.format(precision=2), 
@@ -242,7 +229,6 @@ if view == "Analitzador de Partits":
                 pbp_tab, lineup_tab = st.tabs(["Gràfics de Tir i Registre de Jugades", "Quintets Actius"])
                 
                 with pbp_tab:
-                    # Selectors creuats per Equip i Jugador
                     col_sel1, col_sel2 = st.columns(2)
                     with col_sel1:
                         selected_team = st.selectbox("Filtra per Equip", ["Tots els equips", t1_name, t2_name])
@@ -256,12 +242,10 @@ if view == "Analitzador de Partits":
                         shot_player_sel = st.selectbox("Filtra els llançaments per jugador", all_players_list)
                         shot_player = "All" if shot_player_sel == "Tots" else shot_player_sel
                     
-                    # Filtra el dataframe segons l'equip triat
                     pbp_df_filtered = pbp_df.copy()
                     if selected_team != "Tots els equips":
                         pbp_df_filtered = pbp_df_filtered[pbp_df_filtered["Shot_Team"] == selected_team]
                         
-                    # canvi: Generació directa dels ràdars de barres des del Boxscore en lloc del PBP
                     fig_vol, fig_pps = draw_boxscore_zone_charts(
                         team_summary=team_summary,
                         t1_players=t1_players,
@@ -274,13 +258,13 @@ if view == "Analitzador de Partits":
                     
                     col_map1, col_map2 = st.columns(2)
                     with col_map1:
-                        st.plotly_chart(fig_vol, use_container_width=False)
+                        st.plotly_chart(fig_vol, use_container_width=True)
                     with col_map2:
-                        st.plotly_chart(fig_pps, use_container_width=False)
+                        st.plotly_chart(fig_pps, use_container_width=True)
                         
                     st.markdown("---")
                     st.write("Registre de Jugades (Registre de Temps)")
-                    st.dataframe(pbp_df[["quarter", "time", "text"]].dropna().head(100), height=500, use_container_width=False)
+                    st.dataframe(pbp_df[["quarter", "time", "text"]].dropna().head(100), height=500, use_container_width=True)
                     
                 with lineup_tab:
                     # Filtre d'equip obligatori per a la taula de quintets (lineups)
@@ -296,13 +280,38 @@ if view == "Analitzador de Partits":
                         if team_col is not None:
                             filtered_lineups = filtered_lineups[filtered_lineups[team_col] == selected_lineup_team]
                     
-                    # canvi: Mètode antibales basat en tipus de dades de Pandas per evitar triangles vermells
+                    # Neteja de canvis i eliminació de dades redundants de quintets de la lliga
+                    cols_to_drop = []
+                    for col in filtered_lineups.columns:
+                        col_lower = str(col).lower()
+                        if any(term in col_lower for term in ["tounf", "stl", "blk", "ast"]):
+                            cols_to_drop.append(col)
+                        elif any(zone in col_lower for zone in ["rim", "paint", "mr", "cor3", "atb3"]) and "fgm" in col_lower:
+                            cols_to_drop.append(col)
+                            
+                    filtered_lineups = filtered_lineups.drop(columns=cols_to_drop, errors="ignore")
+                    
+                    pct_cols = [c for c in filtered_lineups.columns if "%" in str(c) or "pct" in str(c).lower()]
+                    for col in pct_cols:
+                        filtered_lineups[col] = pd.to_numeric(filtered_lineups[col], errors="coerce").fillna(0.0)
+                        if filtered_lineups[col].max() <= 1.0:
+                            filtered_lineups[col] = filtered_lineups[col] * 100.0
+                    
+                    # Mapeig dinàmic d'amplades i format de percentatge corregit per a quintets
                     lineup_col_config = {}
                     for col in filtered_lineups.columns:
-                        if pd.api.types.is_numeric_dtype(filtered_lineups[col]):
+                        col_str = str(col).strip()
+                        
+                        if col_str in ["P1", "P2", "P3", "P4", "P5"]:
+                            lineup_col_config[col] = st.column_config.TextColumn(col, width="medium")
+                        elif col_str == "Lineup":
+                            lineup_col_config[col] = st.column_config.TextColumn(col, width="large")
+                        elif col_str in pct_cols:
+                            lineup_col_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width="small")
+                        elif pd.api.types.is_numeric_dtype(filtered_lineups[col]):
                             lineup_col_config[col] = st.column_config.NumberColumn(col, width="small")
                         else:
-                            lineup_col_config[col] = st.column_config.TextColumn(col, width="large")
+                            lineup_col_config[col] = st.column_config.TextColumn(col, width="small")
                             
                     st.write("Rendiment dels Quintets a la Pista")
                     st.dataframe(
@@ -322,13 +331,13 @@ elif view == "Tendències de la Lliga":
     else:
         offense_df, defense_df, master_players = parse_aggregate(AGG_FILE)
         
-        # canvi: Configuració de columnes compacta per a les taules de lliga (Líderat d'Atac i Defensa)
+        # Configuració de columnes compacta en píxels per a les taules de lliga (sense estirament)
         league_col_config = {
-            "Team": st.column_config.TextColumn("Team", width="large")
+            "Team": st.column_config.TextColumn("Team", width=260)
         }
         for col in offense_df.columns:
             if col != "Team":
-                league_col_config[col] = st.column_config.NumberColumn(col, width="small")
+                league_col_config[col] = st.column_config.NumberColumn(col, width=65)
 
         tab_off, tab_def, tab_chart = st.tabs(["Classificació d'Atac de la Lliga", "Classificació de Defensa de la Lliga", "Gràfic de Dispersió"])
         
@@ -391,13 +400,11 @@ elif view == "Tendències de la Lliga":
             mean_x = league_df[x_metric].mean()
             mean_y = league_df[y_metric].mean()
             
-            # canvi: Busquem la màxima desviació per fer els eixos perfectament simètrics i centrats
             max_dev_x = max(abs(league_df[x_metric] - mean_x))
             max_dev_y = max(abs(league_df[y_metric] - mean_y))
             
             x_range = [mean_x - max_dev_x * 1.15, mean_x + max_dev_x * 1.15]
             
-            # Si l'eix Y és el DER, el invertim perquè el millor DER quedi a dalt
             if y_metric in ["DERcal_Off", "eFG%_Def", "FTR_Def"]:
                 y_range = [mean_y + max_dev_y * 1.15, mean_y - max_dev_y * 1.15]
             else:
@@ -424,18 +431,16 @@ elif view == "Tendències de la Lliga":
                 color_discrete_sequence=[CB_BLUE]
             )
             
-            # canvi: Forcem els eixos simètrics i l'alçada del gràfic
             fig_scat.update_layout(
                 height=650,
                 xaxis=dict(range=x_range),
                 yaxis=dict(range=y_range)
             )
             
-            # Add dynamic average lines que ara estaran GARANTIDES de creuar-se exactament al mig
             fig_scat.add_vline(x=mean_x, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Atac")
             fig_scat.add_hline(y=mean_y, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Def")
                 
-            st.plotly_chart(fig_scat, use_container_width=False)
+            st.plotly_chart(fig_scat, use_container_width=True)
 
 # ----------------- VIEW 3: PLAYER SHOOTING INDEX -----------------
 elif view == "Índex de Tir dels Jugadors":
@@ -452,7 +457,6 @@ elif view == "Índex de Tir dels Jugadors":
         master_players["eFG%"] = pd.to_numeric(master_players["eFG%"], errors='coerce')
         master_players["FGA"] = pd.to_numeric(master_players["FGA"], errors='coerce')
         
-        # Zones volume numeric cleanup
         for col in ["Rim FGA", "Paint FGA", "MR FGA", "Cor3 FGA", "ATB3 FGA"]:
             if col in master_players.columns:
                 master_players[col] = pd.to_numeric(master_players[col], errors='coerce').fillna(0.0)
@@ -491,27 +495,26 @@ elif view == "Índex de Tir dels Jugadors":
         
         sorted_players = filtered_players.sort_values(sort_metric, ascending=False)
         
-        # canvi: Nova taula combinada i consolidada que col·loca el volum (FGA de la zona) i l'eficiència (%) un al costat de l'altre
         view_cols = [
             "JUGADOR", "Team", "GamesPlayed", "TIME", "FGA", "PTS", "eFG%", 
             "Rim FGA", "Rim %", "Paint FGA", "Paint %", "MR FGA", "MR %", "Cor3 FGA", "Cor3 %", "ATB3 FGA", "ATB3 %"
         ]
         
-        # canvi: Mètode dinàmic d'autoajust per unificar l'aspecte net a l'índex de tir
+        # Mètode dinàmic d'autoajust compacte en píxels per a l'índex de tir (sin estiramiento)
         player_index_config = {
-            "JUGADOR": st.column_config.TextColumn("JUGADOR", width="large"),
-            "Team": st.column_config.TextColumn("Team", width="medium")
+            "JUGADOR": st.column_config.TextColumn("JUGADOR", width=260),
+            "Team": st.column_config.TextColumn("Team", width=160)
         }
         for col in view_cols:
             if col not in ["JUGADOR", "Team"]:
                 if col == "TIME":
-                    player_index_config[col] = st.column_config.TextColumn(col, width="small")
+                    player_index_config[col] = st.column_config.TextColumn(col, width=65)
                 else:
-                    player_index_config[col] = st.column_config.NumberColumn(col, width="small")
+                    player_index_config[col] = st.column_config.NumberColumn(col, width=60)
         
         st.dataframe(
             sorted_players[view_cols].style.format({
-                "TIME": "{}", # Time is already formatted clean string
+                "TIME": "{}", 
                 "FGA": "{:.1f}",
                 "PTS": "{:.1f}",
                 "eFG%": "{:.2f}%",
@@ -540,55 +543,48 @@ elif view == "Scouting de Rivals":
     else:
         offense_df, defense_df, master_players = parse_aggregate(AGG_FILE)
         
-        # 1. Selectors de l'Equip A i l'Equip B
         teams_list = sorted(list(offense_df["Team"].unique()))
         col_tA, col_tB = st.columns(2)
         with col_tA:
             team_A = st.selectbox("Selecciona l'Equip A", teams_list, index=0)
         with col_tB:
-            # Seleccionem automàticament el segon o el darrer equip de la llista per evitar el mateix selector
             team_B = st.selectbox("Selecciona l'Equip B", teams_list, index=min(1, len(teams_list)-1))
             
         if team_A == team_B:
             st.warning("Selecciona dos equips diferents per poder fer la comparativa de scouting.")
         else:
-            # --- CÀLCUL DE RÀNQUINGS D'EFICIÈNCIA (MIRROR BARS) ---
             st.markdown("---")
             st.subheader("Comparativa de Rànquings i Eficiència de l'Equip")
             
-            # Preparem els rànquings dinàmics de l'staff
             off_ranks = offense_df.copy()
             def_ranks = defense_df.copy()
             
-           # Offensive Rankings (Higher is better)
+            # OER, eFG%, ORB%, FTR, POSScal rànquing alt és millor (descending)
+            # DER, TOV% cal rànquing baix és millor (ascending)
             off_ranks["OER_Rank"] = off_ranks["OERcal"].rank(ascending=False, method="min")
             off_ranks["eFG_Rank"] = off_ranks["eFG%"].rank(ascending=False, method="min")
             off_ranks["ORB_Rank"] = off_ranks["ORB%cal"].rank(ascending=False, method="min")
             off_ranks["FTR_Rank"] = off_ranks["FTR"].rank(ascending=False, method="min")
             off_ranks["Pace_Rank"] = off_ranks["POSScal"].rank(ascending=False, method="min")
-            off_ranks["TOV_Rank"] = off_ranks["TOV%cal"].rank(ascending=True, method="min") # Lower is better
+            off_ranks["TOV_Rank"] = off_ranks["TOV%cal"].rank(ascending=True, method="min")
             
-            # Defensive Rankings (canvi: El ràting defensiu real es calcula sobre OERcal de la pestanya de defensa, lower is better)
             def_ranks["DER_Rank"] = def_ranks["OERcal"].rank(ascending=True, method="min")
             def_ranks["eFG_Def_Rank"] = def_ranks["eFG%"].rank(ascending=True, method="min")
             def_ranks["TOV_Def_Rank"] = def_ranks["TOV%cal"].rank(ascending=False, method="min")
             def_ranks["ORB_Def_Rank"] = def_ranks["ORB%cal"].rank(ascending=True, method="min")
             def_ranks["FTR_Def_Rank"] = def_ranks["FTR"].rank(ascending=True, method="min")
             
-            # Cerca de dades reals i rànquings per a tots dos equips
             def get_team_scout_stats(team_name):
                 t_off = off_ranks[off_ranks["Team"] == team_name].iloc[0]
                 t_def = def_ranks[def_ranks["Team"] == team_name].iloc[0]
                 return {
                     "OER": (t_off["OERcal"], int(t_off["OER_Rank"])),
-                    # canvi: Pull del DER real usant t_def["OERcal"] (OER del rival)
                     "DER": (t_def["OERcal"], int(t_def["DER_Rank"])),
                     "Pace": (t_off["POSScal"], int(t_off["Pace_Rank"])),
                     "eFG": (t_off["eFG%"], int(t_off["eFG_Rank"])),
                     "TOV": (t_off["TOV%cal"], int(t_off["TOV_Rank"])),
                     "ORB": (t_off["ORB%cal"], int(t_off["ORB_Rank"])),
                     "FTR": (t_off["FTR"], int(t_off["FTR_Rank"])),
-                    # Defensive 4 Factors
                     "eFG_Def": (t_def["eFG%"], int(t_def["eFG_Def_Rank"])),
                     "TOV_Def": (t_def["TOV%cal"], int(t_def["TOV_Def_Rank"])),
                     "ORB_Def": (t_def["ORB%cal"], int(t_def["ORB_Def_Rank"])),
@@ -598,7 +594,6 @@ elif view == "Scouting de Rivals":
             stats_A = get_team_scout_stats(team_A)
             stats_B = get_team_scout_stats(team_B)
             
-            # canvi: Nova taula en mirall afegint les mètriques dels 4 Factors Defensius
             mirror_data = []
             metrics_mapping = [
                 ("OER", "Ràting Ofensiu (OER)", "{:.2f}"),
@@ -614,7 +609,6 @@ elif view == "Scouting de Rivals":
                 ("FTR_Def", "Ràtio de Tirs Lliures Defensiu (Rival FTR)", "{:.2f}")
             ]
             
-            # Helper de numeració en català per als rànquings corregit
             def cat_rank(num):
                 if num == 1: return "1er"
                 elif num == 2: return "2on"
@@ -626,7 +620,6 @@ elif view == "Scouting de Rivals":
                 val_A, rank_A = stats_A[key]
                 val_B, rank_B = stats_B[key]
                 
-                # Format string ex: "1r (98.15)"
                 str_A = f"{cat_rank(rank_A)} ({fmt.format(val_A)})"
                 str_B = f"{cat_rank(rank_B)} ({fmt.format(val_B)})"
                 mirror_data.append({
@@ -637,15 +630,12 @@ elif view == "Scouting de Rivals":
                 
             st.table(pd.DataFrame(mirror_data))
             
-            # --- SEPARACIÓ DE MÈTRIQUES DE 2P I 3P PER A JUGADORS ---
             st.markdown("---")
             st.subheader("Anàlisi Comparatiu de Jugadors (Volum i PPS per Trams)")
             
             def calculate_player_splits_scout(team_name):
-                # Filtrem els jugadors per equip
                 df_players = master_players[master_players["Team"] == team_name].copy()
                 
-                # Parse numeric columns safely
                 cols_to_parse = [
                     "Rim FGA", "Paint FGA", "MR FGA", "Rim FGM", "Paint FGM", "MR FGM", 
                     "Cor3 FGA", "ATB3 FGA", "Cor3 FGM", "ATB3 FGM", "GamesPlayed"
@@ -654,19 +644,16 @@ elif view == "Scouting de Rivals":
                     if c in df_players.columns:
                         df_players[c] = pd.to_numeric(df_players[c], errors='coerce').fillna(0.0)
                         
-                # 2-Point calculations (Rim + Paint + MR)
                 df_players["FGA_2P"] = df_players["Rim FGA"] + df_players["Paint FGA"] + df_players["MR FGA"]
                 df_players["FGM_2P"] = df_players["Rim FGM"] + df_players["Paint FGM"] + df_players["MR FGM"]
                 df_players["PPS_2P"] = (2.0 * df_players["FGM_2P"]) / df_players["FGA_2P"]
                 df_players["PPS_2P"] = df_players["PPS_2P"].fillna(0.0)
                 
-                # 3-Point calculations (Corner 3 + ATB3)
                 df_players["FGA_3P"] = df_players["Cor3 FGA"] + df_players["ATB3 FGA"]
                 df_players["FGM_3P"] = df_players["Cor3 FGM"] + df_players["ATB3 FGM"]
                 df_players["PPS_3P"] = (3.0 * df_players["FGM_3P"]) / df_players["FGA_3P"]
                 df_players["PPS_3P"] = df_players["PPS_3P"].fillna(0.0)
                 
-                # Settle output view
                 scout_cols = ["JUGADOR", "GamesPlayed", "FGA_2P", "PPS_2P", "FGA_3P", "PPS_3P"]
                 return df_players[scout_cols].sort_values("FGA_2P", ascending=False)
                 
@@ -675,7 +662,13 @@ elif view == "Scouting de Rivals":
             
             scout_tab1, scout_tab2 = st.tabs([f"Jugadors - {team_A}", f"Jugadors - {team_B}"])
             
-            # Format dictionaries
+            scout_col_config = {
+                "JUGADOR": st.column_config.TextColumn("JUGADOR", width=260)
+            }
+            for col in players_A_scout.columns:
+                if col != "JUGADOR":
+                    scout_col_config[col] = st.column_config.NumberColumn(col, width=65)
+
             scout_format = {
                 "FGA_2P": "{:.1f}",
                 "PPS_2P": "{:.2f}",
@@ -687,18 +680,14 @@ elif view == "Scouting de Rivals":
                 st.write(f"Volum de tirs i PPS per a llançaments de 2 i 3 punts de {team_A}")
                 st.dataframe(
                     players_A_scout.style.format(scout_format), 
-                    use_container_width=False,
-                    column_config={
-                        "JUGADOR": st.column_config.TextColumn("JUGADOR", width="large")
-                    }
+                    use_container_width=False, 
+                    column_config=scout_col_config
                 )
                 
             with scout_tab2:
                 st.write(f"Volum de tirs i PPS per a llançaments de 2 i 3 punts de {team_B}")
                 st.dataframe(
                     players_B_scout.style.format(scout_format), 
-                    use_container_width=False,
-                    column_config={
-                        "JUGADOR": st.column_config.TextColumn("JUGADOR", width="large")
-                    }
+                    use_container_width=False, 
+                    column_config=scout_col_config
                 )
