@@ -93,100 +93,6 @@ def parse_boxscore(file_path):
     if len(jugador_rows) < 2:
         raise ValueError("Could not find the 'JUGADOR' header blocks in the boxscore sheet.")
         
-import pandas as pd
-import numpy as np
-import glob
-import os
-import re
-import datetime
-
-def resolve_path_case_insensitive(base_dir, *subdirs_and_file):
-    """
-    Traverses directories case-insensitively on Linux platforms.
-    For example: resolve_path_case_insensitive("data/raw", "Copa_2025_2026", "aggregate", "aggregate_season_latest.xlsx")
-    """
-    current_path = base_dir
-    if not os.path.exists(current_path):
-        return None
-        
-    for part in subdirs_and_file:
-        try:
-            entries = os.listdir(current_path)
-        except OSError:
-            return None
-            
-        # Match case-insensitively
-        match = None
-        for entry in entries:
-            if entry.lower() == part.lower():
-                match = entry
-                break
-        
-        if match is None:
-            # Fallback if looking for a file: check if any xlsx exists in this directory
-            if part.endswith(".xlsx"):
-                xlsx_files = [e for e in entries if e.lower().endswith(".xlsx")]
-                if xlsx_files:
-                    match = xlsx_files[0]
-                else:
-                    return None
-            else:
-                return None
-        
-        current_path = os.path.join(current_path, match)
-        
-    return current_path
-
-def get_available_seasons(raw_data_dir="data/raw"):
-    """Scans the raw data folder and returns a list of subfolders (seasons)."""
-    if not os.path.exists(raw_data_dir):
-        return []
-    seasons = [
-        d for d in os.listdir(raw_data_dir) 
-        if os.path.isdir(os.path.join(raw_data_dir, d)) and not d.startswith(".")
-    ]
-    return sorted(seasons, reverse=True)
-
-def load_all_game_options(boxscore_dir):
-    """Scans the boxscore folder to return a list of available games with clean titles."""
-    if not boxscore_dir or not os.path.exists(boxscore_dir):
-        return []
-    files = glob.glob(os.path.join(boxscore_dir, "*.xlsx"))
-    options = []
-    for f in files:
-        base = os.path.basename(f)
-        
-        # Clean up the name
-        name_part = base.lower().replace("boxscore_", "").replace(".xlsx", "")
-        
-        # If the filename contains "vs", cleanly separate teams
-        if "vs" in name_part:
-            parts = name_part.split("vs")
-            team1 = parts[0].replace("_", " ").strip().title()
-            team2 = parts[1].replace("_", " ").strip().title()
-            team1 = " ".join(team1.split())
-            team2 = " ".join(team2.split())
-            display_name = f"{team1} vs {team2}"
-        else:
-            cleaned = name_part.replace("_", " ").title()
-            display_name = " ".join(cleaned.split())
-            
-        options.append({"path": f, "name": display_name, "filename": base})
-    return options
-
-def parse_boxscore(file_path):
-    """
-    Parses the custom boxscore spreadsheet.
-    Separates the team summaries from the individual player performance blocks.
-    """
-    team_df = pd.read_excel(file_path, header=0, nrows=2)
-    full_sheet = pd.read_excel(file_path, header=None)
-    
-    jugador_rows = full_sheet[full_sheet.eq("JUGADOR").any(axis=1)].index.tolist()
-    
-    if len(jugador_rows) < 2:
-        raise ValueError("Could not find the 'JUGADOR' header blocks in the boxscore sheet.")
-        
     t1_name = str(full_sheet.iloc[jugador_rows[0] - 1, 0]).strip()
     t1_players = pd.read_excel(file_path, skiprows=jugador_rows[0])
     
@@ -237,7 +143,7 @@ def parse_aggregate(file_path):
     master_players = pd.concat(all_players, ignore_index=True)
     return offense_df, defense_df, master_players
 
-# --- REFINED HELPERS FOR TIME ROUNDING & MULTI-METRIC PBP ALIGNMENT ---
+# --- HELPERS FOR TIME ROUNDING & MULTI-METRIC PBP ALIGNMENT ---
 
 def parse_time_to_minutes(val):
     """
@@ -328,37 +234,33 @@ def estimate_game_duration(players_df1, players_df2, pbp_df=None):
     1. Maximum period (quarter) in PBP file (if available).
     2. Sum of player minutes from boxscores (as fallback).
     """
-    # 1. Best: Use PBP quarters if available (accurate and robust)
     if pbp_df is not None and not pbp_df.empty and "quarter" in pbp_df.columns:
         max_quarter = pbp_df["quarter"].max()
         if max_quarter <= 4:
-            # Check if total player minutes are low, indicating youth 32m league
             t1_mins = get_total_team_minutes(players_df1)
             t2_mins = get_total_team_minutes(players_df2)
             max_mins = max(t1_mins, t2_mins)
             if max_mins < 180 and max_mins > 0:
-                return 32  # Partits de cadet/infantil (32 minuts totals)
-            return 40  # Partit de 40 minuts reglamentaris
+                return 32  # Cadet
+            return 40  # Regulation 40m
         else:
-            # Cada pròrroga (OT) suma 5 minuts
             ot_periods = max_quarter - 4
             return 40 + ot_periods * 5
             
-    # 2. Fallback: Use summed team minutes
     t1_mins = get_total_team_minutes(players_df1)
     t2_mins = get_total_team_minutes(players_df2)
     max_mins = max(t1_mins, t2_mins)
     
     if max_mins > 235:
-        return 50  # 2 OT FIBA (50 minuts)
+        return 50  # 2 OT
     elif max_mins > 210:
-        return 45  # 1 OT FIBA (45 minuts)
+        return 45  # 1 OT
     elif max_mins > 180:
-        return 40  # Reglamentari FIBA (40 minuts)
+        return 40  # Regulation
     elif max_mins > 145:
-        return 32  # Cadet/Infantil (32 minuts)
+        return 32  # Junior
     else:
-        return 40  # Fallback per defecte
+        return 40  # Fallback
 
 def normalize_and_format_player_times(players_df, target_minutes):
     """
@@ -395,7 +297,6 @@ def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
     if not pbp_files:
         return None
         
-    # Attempt 1: Match by Team Name keywords (Strongest)
     t1_words = set(re.findall(r'\w+', t1_name.lower()))
     t2_words = set(re.findall(r'\w+', t2_name.lower()))
     for common in ["cb", "c", "b", "1", "2", "3", "a", "basket", "basquet", "club", "unio", "esportiva"]:
@@ -419,34 +320,32 @@ def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
     if best_file:
         return os.path.join(pbp_dir, best_file)
         
-    # Attempt 2: Match by date/numbers inside the filename (Fallback)
     box_numbers = re.findall(r'\d+', boxscore_filename)
     if box_numbers:
         longest_num = max(box_numbers, key=len)
-        if len(longest_num) >= 4:  # Match only on dates/game IDs
+        if len(longest_num) >= 4:
             for pf in pbp_files:
                 if longest_num in pf:
                     return os.path.join(pbp_dir, pf)
                     
-    # Attempt 3: If only one PBP file exists, default to it
     if len(pbp_files) == 1:
         return os.path.join(pbp_dir, pbp_files[0])
         
     return None
+
 def tag_shot_team(pbp_df, t1_name, t2_name):
     """Tags each play with the correct team name based on team stats columns."""
     pbp_df = pbp_df.copy()
     pbp_df["Shot_Team"] = "Desconegut"
     
-    # If any Team A stat is 1, it belongs to Team A
     team_a_mask = (pbp_df["FGA_A"] == 1) | (pbp_df["FGM_A"] == 1) | (pbp_df["2PA_A"] == 1) | (pbp_df["3PA_A"] == 1) | (pbp_df["FTA_A"] == 1)
     pbp_df.loc[team_a_mask, "Shot_Team"] = t1_name
     
-    # If any Team B stat is 1, it belongs to Team B
     team_b_mask = (pbp_df["FGA_B"] == 1) | (pbp_df["FGM_B"] == 1) | (pbp_df["2PA_B"] == 1) | (pbp_df["3PA_B"] == 1) | (pbp_df["FTA_B"] == 1)
     pbp_df.loc[team_b_mask, "Shot_Team"] = t2_name
     
     return pbp_df
+
 def get_dir_cache_key(directory):
     """Calculates a unique cache key based on the count and modification times of files."""
     if not directory or not os.path.exists(directory):
@@ -499,7 +398,6 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
     combined_df = pd.concat(all_lineups, ignore_index=True)
     combined_df.columns = combined_df.columns.str.strip()
     
-    # Map synonyms for Rebounds (RO/RD) defensively
     for col in combined_df.columns:
         col_lower = col.lower()
         if "oreb_for" in col_lower or "orb_for" in col_lower:
@@ -519,14 +417,12 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
         else:
             return pd.DataFrame(), pd.DataFrame()
             
-    # Target standard columns to aggregate
     numeric_cols = [
         "PTS_For", "PTS_Agn", "+/-", "FTM_For", "FTA_For", "FTM_Agn", "FTA_Agn", 
         "FOULS_Cor", "FOULS_Dra", "TOV_For", "TOV_Agn",
         "RO_For", "RD_For", "RO_Agn", "RD_Agn"
     ]
     
-    # Scanner dinàmic per agrupar i conservar totes les columnes de tir reals del excel de fons (RIM, PAINT, etc.)
     for col in combined_df.columns:
         col_lower = col.lower()
         if any(z in col_lower for z in ["rim", "paint", "mr", "cor", "atb"]):
@@ -545,16 +441,13 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
             
     aggregated = combined_df.groupby("Lineup").agg(agg_dict).reset_index()
     
-    # Calculate percentages dynamically on aggregated columns
     for suffix in ["_For", "_Agn"]:
-        # 2P%
         fga_2p = f"2PA{suffix}"
         fgm_2p = f"2PM{suffix}"
         pct_2p = f"2P%{suffix}"
         if fga_2p in aggregated.columns and fgm_2p in aggregated.columns:
             aggregated[pct_2p] = (aggregated[fgm_2p] / aggregated[fga_2p] * 100.0).fillna(0.0)
             
-        # 3P%
         fga_3p = f"3PA{suffix}"
         fgm_3p = f"3PM{suffix}"
         pct_3p = f"3P%{suffix}"
@@ -564,8 +457,8 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
     if "+/-" in aggregated.columns:
         aggregated = aggregated.sort_values("+/-", ascending=False)
         
-    # canvi: Retornem la parella (taula acumulada + taula de fons sencera) per permetre creuaments
     return aggregated, combined_df
+
 @st.cache_data
 def load_all_raw_game_boxscores(boxscore_dir, cache_key):
     """
@@ -580,11 +473,9 @@ def load_all_raw_game_boxscores(boxscore_dir, cache_key):
     
     for f in files:
         try:
-            # Read the team aggregate totals (first 2 rows)
             team_df = pd.read_excel(f, header=0, nrows=2)
             team_df.columns = team_df.columns.str.strip()
             
-            # Clean and format game names
             base = os.path.basename(f)
             game_name = base.replace("boxscore_", "").replace(".xlsx", "").replace("_", " ").title()
             game_name = " ".join(game_name.split())
