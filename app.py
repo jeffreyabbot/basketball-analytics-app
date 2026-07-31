@@ -503,34 +503,93 @@ elif view == "Tendències de la Lliga":
                     roster_with_none = ["Cap (Només Jugador A)"] + [p for p in roster_list if p != player_X]
                     player_Y = st.selectbox("Selecciona el Jugador B (Opcional)", roster_with_none, index=0)
                     
-                # canvi: Mètode programàtic de càlcul d'estadístiques avançades per a parelles de l'staff
+                # canvi: Mètode programàtic de càlcul dinàmic d'estadístiques avançades lliure d'errors de clau (KeyError)
                 def calculate_combo_stats_metrics(df):
                     if df.empty:
                         return 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0
                     
-                    # Volums de tirs
-                    fga_for = float(df["2PA_For"].sum() + df["3PA_For"].sum())
-                    fgm_for_weighted = float(df["2PM_For"].sum() + 1.5 * df["3PM_For"].sum())
+                    # Funció de cerca dinàmica insensible a majúscules/minúscules
+                    def sum_cols_matching(patterns):
+                        total = 0.0
+                        for col in df.columns:
+                            col_lower = col.lower()
+                            if all(p in col_lower for p in patterns):
+                                total += df[col].sum()
+                        return total
+
+                    # 1. Sumem el volum (FGA) i encerts (FGM) de fons per a cada zona de 2P i 3P (Ofensiu)
+                    rim_fga_for = sum_cols_matching(["rim", "fga", "for"])
+                    rim_fgm_for = sum_cols_matching(["rim", "fgm", "for"])
                     
-                    fga_agn = float(df["2PA_Agn"].sum() + df["3PA_Agn"].sum())
-                    fgm_agn_weighted = float(df["2PM_Agn"].sum() + 1.5 * df["3PM_Agn"].sum())
+                    paint_fga_for = sum_cols_matching(["paint", "fga", "for"])
+                    paint_fgm_for = sum_cols_matching(["paint", "fgm", "for"])
+                    
+                    mr_fga_for = sum_cols_matching(["mr", "fga", "for"])
+                    mr_fgm_for = sum_cols_matching(["mr", "fgm", "for"])
+                    
+                    cor_fga_for = sum_cols_matching(["cor", "fga", "for"])
+                    cor_fgm_for = sum_cols_matching(["cor", "fgm", "for"])
+                    
+                    atb_fga_for = sum_cols_matching(["atb", "fga", "for"])
+                    atb_fgm_for = sum_cols_matching(["atb", "fgm", "for"])
+                    
+                    # 2. Sumem el volum (FGA) i encerts (FGM) de fons per a cada zona de 2P i 3P (Defensiu / Rival)
+                    rim_fga_agn = sum_cols_matching(["rim", "fga", "ag"])
+                    rim_fgm_agn = sum_cols_matching(["rim", "fgm", "ag"])
+                    
+                    paint_fga_agn = sum_cols_matching(["paint", "fga", "ag"])
+                    paint_fgm_agn = sum_cols_matching(["paint", "fgm", "ag"])
+                    
+                    mr_fga_agn = sum_cols_matching(["mr", "fga", "ag"])
+                    mr_fgm_agn = sum_cols_matching(["mr", "fgm", "ag"])
+                    
+                    cor_fga_agn = sum_cols_matching(["cor", "fga", "ag"])
+                    cor_fgm_agn = sum_cols_matching(["cor", "fgm", "ag"])
+                    
+                    atb_fga_agn = sum_cols_matching(["atb", "fga", "ag"])
+                    atb_fgm_agn = sum_cols_matching(["atb", "fgm", "ag"])
+                    
+                    # 3. Calculem l'acumulat total de 2P i 3P
+                    fga_2p_for = rim_fga_for + paint_fga_for + mr_fga_for
+                    fgm_2p_for = rim_fgm_for + paint_fgm_for + mr_fgm_for
+                    
+                    fga_3p_for = cor_fga_for + atb_fga_for
+                    fgm_3p_for = cor_fgm_for + atb_fgm_for
+                    
+                    fga_for = fga_2p_for + fga_3p_for
+                    fgm_for_weighted = fgm_2p_for + 1.5 * fgm_3p_for
+                    
+                    # 4. Calculem l'acumulat total de 2P i 3P (Rival)
+                    fga_2p_agn = rim_fga_agn + paint_fga_agn + mr_fga_agn
+                    fgm_2p_agn = rim_fgm_agn + paint_fgm_agn + mr_fgm_agn
+                    
+                    fga_3p_agn = cor_fga_agn + atb_fga_agn
+                    fgm_3p_agn = cor_fgm_agn + atb_fgm_agn
+                    
+                    fga_agn = fga_2p_agn + fga_3p_agn
+                    fgm_agn_weighted = fgm_2p_agn + 1.5 * fgm_3p_agn
                     
                     # eFG% (Ofensiva i Defensiva)
                     off_efg = (fgm_for_weighted / fga_for * 100.0) if fga_for > 0 else 0.0
                     def_efg = (fgm_agn_weighted / fga_agn * 100.0) if fga_agn > 0 else 0.0
                     
-                    # TO% (Pèrdues ofensives i defensives estimades per possessions)
-                    poss_for = fga_for + 0.44 * df["FTA_For"].sum() + df["TOV_For"].sum()
-                    to_pct = (df["TOV_For"].sum() / poss_for * 100.0) if poss_for > 0 else 0.0
+                    # TO% (Pèrdues ofensives i defensives estimades per possessions reals)
+                    tov_for = sum_cols_matching(["tov", "for"])
+                    fta_for = sum_cols_matching(["fta", "for"])
+                    poss_for = fga_for + 0.44 * fta_for + tov_for
+                    to_pct = (tov_for / poss_for * 100.0) if poss_for > 0 else 0.0
                     
-                    poss_agn = fga_agn + 0.44 * df["FTA_Agn"].sum() + df["TOV_Agn"].sum()
-                    to_pct_ag = (df["TOV_Agn"].sum() / poss_agn * 100.0) if poss_agn > 0 else 0.0
+                    tov_agn = sum_cols_matching(["tov", "agn"]) + sum_cols_matching(["tov", "ag"])
+                    fta_agn = sum_cols_matching(["fta", "agn"]) + sum_cols_matching(["fta", "ag"])
+                    poss_agn = fga_agn + 0.44 * fta_agn + tov_agn
+                    to_pct_ag = (tov_agn / poss_agn * 100.0) if poss_agn > 0 else 0.0
                     
                     # Totals de Rebot (RO i RD)
-                    ro = int(df["RO_For"].sum()) if "RO_For" in df.columns else 0
-                    ro_ag = int(df["RO_Agn"].sum()) if "RO_Agn" in df.columns else 0
-                    rd = int(df["RD_For"].sum()) if "RD_For" in df.columns else 0
-                    rd_ag = int(df["RD_Agn"].sum()) if "RD_Agn" in df.columns else 0
+                    ro = int(sum_cols_matching(["ro", "for"]) + sum_cols_matching(["oreb", "for"]) + sum_cols_matching(["orb", "for"]))
+                    rd = int(sum_cols_matching(["rd", "for"]) + sum_cols_matching(["dreb", "for"]) + sum_cols_matching(["drb", "for"]))
+                    
+                    ro_ag = int(sum_cols_matching(["ro", "agn"]) + sum_cols_matching(["oreb", "agn"]) + sum_cols_matching(["orb", "agn"]) + sum_cols_matching(["ro", "ag"]) + sum_cols_matching(["oreb", "ag"]) + sum_cols_matching(["orb", "ag"]))
+                    rd_ag = int(sum_cols_matching(["rd", "agn"]) + sum_cols_matching(["dreb", "agn"]) + sum_cols_matching(["drb", "agn"]) + sum_cols_matching(["rd", "ag"]) + sum_cols_matching(["dreb", "ag"]) + sum_cols_matching(["drb", "ag"]))
                     
                     return off_efg, def_efg, to_pct, to_pct_ag, ro, ro_ag, rd, rd_ag
 

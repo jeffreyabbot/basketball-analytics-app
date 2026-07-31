@@ -518,15 +518,21 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
         else:
             return pd.DataFrame()
             
-    # Target columns to aggregate
+    # Target standard columns to aggregate
     numeric_cols = [
         "PTS_For", "PTS_Agn", "+/-", "FTM_For", "FTA_For", "FTM_Agn", "FTA_Agn", 
         "FOULS_Cor", "FOULS_Dra", "TOV_For", "TOV_Agn",
-        "RO_For", "RD_For", "RO_Agn", "RD_Agn",
-        "2PA_For", "2PM_For", "2PA_Agn", "2PM_Agn",
-        "3PA_For", "3PM_For", "3PA_Agn", "3PM_Agn"
+        "RO_For", "RD_For", "RO_Agn", "RD_Agn"
     ]
-    available_numeric = [c for c in numeric_cols if c in combined_df.columns]
+    
+    # canvi: Scanner dinàmic per agrupar i conservar totes les columnes de tir reals del excel de fons (RIM, PAINT, etc.)
+    for col in combined_df.columns:
+        col_lower = col.lower()
+        if any(z in col_lower for z in ["rim", "paint", "mr", "cor", "atb"]):
+            if any(term in col_lower for term in ["fga", "fgm", "%", "pct"]):
+                numeric_cols.append(col)
+                
+    available_numeric = [c for c in list(set(numeric_cols)) if c in combined_df.columns]
     
     for c in available_numeric:
         combined_df[c] = pd.to_numeric(combined_df[c], errors="coerce").fillna(0.0)
