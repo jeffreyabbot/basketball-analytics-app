@@ -541,11 +541,63 @@ elif view == "Tendències de la Lliga":
                 selected_agg_team = st.selectbox("Selecciona l'Equip per analitzar els seus Quintets acumulats", scout_teams)
                 
                 pbp_cache_key = get_dir_cache_key(PBP_DIR)
-                agg_lineups, combined_df = load_and_aggregate_season_lineups(PBP_DIR, selected_agg_team, pbp_cache_key)
                 
-                if agg_lineups.empty:
+                # Carreguem dades de quintets i dades brutes de fons
+                agg_lineups_all, combined_df = load_and_aggregate_season_lineups(PBP_DIR, selected_agg_team, pbp_cache_key)
+                
+                if combined_df.empty:
                     st.info("No s'han trobat dades de quintets per a aquest equip en els fitxers Play-by-Play d'aquesta temporada.")
                 else:
+                    # canvi: Sincronització de jornades dinàmica estricta (mètode de fons de la Fase 4)
+                    # Formatem la setmana de combined_df en format de cerca "Jornada X"
+                    combined_df["Week_Str"] = combined_df["Week"].apply(
+                    lambda w: f"Jornada {int(float(w))}" if isinstance(w, (int, float)) or str(w).replace('.', '', 1).isdigit() else f"Jornada {w}"
+                )
+                
+                # Filtrem en viu les files de rotacions brutes segons les Jornades seleccionades
+                combined_df_filtered = combined_df[combined_df["Week_Str"].isin(selected_weeks)].copy()
+                
+                if combined_df_filtered.empty:
+                    st.warning("No hi ha dades de quintets disponibles per a les jornades seleccionades.")
+                else:
+                    # canvi: Recalculem de manera dinàmica la taula acumulada segons el tall temporal triat
+                    numeric_cols = [
+                        "PTS_For", "PTS_Agn", "+/-", "FTM_For", "FTA_For", "FTM_Agn", "FTA_Agn", 
+                        "FOULS_Cor", "FOULS_Dra", "TOV_For", "TOV_Agn",
+                        "RO_For", "RD_For", "RO_Agn", "RD_Agn"
+                    ]
+                    for col in combined_df_filtered.columns:
+                        col_lower = col.lower()
+                        if any(z in col_lower for z in ["rim", "paint", "mr", "cor", "atb"]):
+                            if any(term in col_lower for term in ["fga", "fgm", "%", "pct"]):
+                                numeric_cols.append(col)
+                                
+                    available_numeric = [c for c in list(set(numeric_cols)) if c in combined_df_filtered.columns]
+                    
+                    agg_dict = {c: "sum" for c in available_numeric}
+                    for c in ["P1", "P2", "P3", "P4", "P5"]:
+                        if c in combined_df_filtered.columns:
+                            agg_dict[c] = "first"
+                            
+                    agg_lineups = combined_df_filtered.groupby("Lineup").agg(agg_dict).reset_index()
+                    
+                    for suffix in ["_For", "_Agn"]:
+                        fga_2p = f"2PA{suffix}"
+                        fgm_2p = f"2PM{suffix}"
+                        pct_2p = f"2P%{suffix}"
+                        if fga_2p in agg_lineups.columns and fgm_2p in agg_lineups.columns:
+                            agg_lineups[pct_2p] = (agg_lineups[fgm_2p] / agg_lineups[fga_2p] * 100.0).fillna(0.0)
+                            
+                        fga_3p = f"3PA{suffix}"
+                        fgm_3p = f"3PM{suffix}"
+                        pct_3p = f"3P%{suffix}"
+                        if fga_3p in agg_lineups.columns and fgm_3p in agg_lineups.columns:
+                            agg_lineups[pct_3p] = (agg_lineups[fgm_3p] / agg_lineups[fga_3p] * 100.0).fillna(0.0)
+                            
+                    if "+/-" in agg_lineups.columns:
+                        agg_lineups = agg_lineups.sort_values("+/-", ascending=False)
+                    
+                    # Pintem el dataframe de dades dinàmic de la setmana seleccionada
                     lineup_cols = [
                         "P1", "P2", "P3", "P4", "P5", "Lineup", "PTS_For", "PTS_Agn", "+/-", 
                         "RO_For", "RD_For", "RO_Agn", "RD_Agn",
@@ -567,7 +619,7 @@ elif view == "Tendències de la Lliga":
                         else:
                             lineup_col_config[col] = st.column_config.NumberColumn(col, width="small")
                             
-                    st.write(f"Rendiment Acumulat dels Quintets de **{selected_agg_team}** (Temporada Completa)")
+                    st.write(f"Rendiment Acumulat de Quintets de **{selected_agg_team}** (Filtre dinàmic actiu)")
                     st.dataframe(
                         agg_lineups[selected_lineup_cols], 
                         use_container_width=False,
@@ -663,10 +715,11 @@ elif view == "Tendències de la Lliga":
                         return off_efg, def_efg, to_pct, to_pct_ag, ro, ro_ag, rd, rd_ag
 
                     if player_Y == "Cap (Només Jugador A)":
-                        on_court = combined_df[combined_df["Lineup"].str.contains(player_X, na=False)]
-                        off_court = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False)]
+                        # canvi: Càlculs estrictament lligats a les Jornades seleccionades
+                        on_court = combined_df_filtered[combined_df_filtered["Lineup"].str.contains(player_X, na=False)]
+                        off_court = combined_df_filtered[~combined_df_filtered["Lineup"].str.contains(player_X, na=False)]
                         
-                        st.write(f"Rendiment global d'On/Off per a **{player_X}**:")
+                        st.write(f"Rendiment global d'On/Off per a **{player_X}** (Filtrat per setmanes):")
                         col_on, col_off = st.columns(2)
                         with col_on:
                             plus_on = on_court["+/-"].sum() if not on_court.empty else 0.0
@@ -689,9 +742,10 @@ elif view == "Tendències de la Lliga":
                             if teammate == player_X:
                                 continue
                             
-                            both_on_raw = combined_df[
-                                combined_df["Lineup"].str.contains(player_X, na=False) & 
-                                combined_df["Lineup"].str.contains(teammate, na=False)
+                            # canvi: El rànquing de parelles ara es calcula estrictament sobre les Jornades seleccionades (combined_df_filtered)
+                            both_on_raw = combined_df_filtered[
+                                combined_df_filtered["Lineup"].str.contains(player_X, na=False) & 
+                                combined_df_filtered["Lineup"].str.contains(teammate, na=False)
                             ]
                             
                             if not both_on_raw.empty:
@@ -758,10 +812,12 @@ elif view == "Tendències de la Lliga":
                                     column_config=t_config
                                 )
                     else:
-                        both_on = combined_df[combined_df["Lineup"].str.contains(player_X, na=False) & combined_df["Lineup"].str.contains(player_Y, na=False)]
-                        only_X = combined_df[combined_df["Lineup"].str.contains(player_X, na=False) & ~combined_df["Lineup"].str.contains(player_Y, na=False)]
-                        only_Y = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False) & combined_df["Lineup"].str.contains(player_Y, na=False)]
-                        both_off = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False) & ~combined_df["Lineup"].str.contains(player_Y, na=False)]
+                        # --- MODE 2: ANALISI CREUAT COMPLET (DOS JUGADORS) ---
+                        # Cerca dinàmica sobre el segment triat de la temporada (combined_df_filtered)
+                        both_on = combined_df_filtered[combined_df_filtered["Lineup"].str.contains(player_X, na=False) & combined_df_filtered["Lineup"].str.contains(player_Y, na=False)]
+                        only_X = combined_df_filtered[combined_df_filtered["Lineup"].str.contains(player_X, na=False) & ~combined_df_filtered["Lineup"].str.contains(player_Y, na=False)]
+                        only_Y = combined_df_filtered[~combined_df_filtered["Lineup"].str.contains(player_X, na=False) & combined_df_filtered["Lineup"].str.contains(player_Y, na=False)]
+                        both_off = combined_df_filtered[~combined_df_filtered["Lineup"].str.contains(player_X, na=False) & ~combined_df_filtered["Lineup"].str.contains(player_Y, na=False)]
                         
                         st.write(f"Rendiment de l'equip segons la presència de **{player_X}** i **{player_Y}**:")
                         
