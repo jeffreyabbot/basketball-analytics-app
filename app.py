@@ -996,6 +996,59 @@ elif view == "Tirs Jugadors":
                 st.plotly_chart(fig_vol_rad, use_container_width=True)
             with col_map2:
                 st.plotly_chart(fig_eff_rad, use_container_width=True)
+            # canvi: Nova taula resum compacta en píxels sota els ràdars comparant Tirs, PPS i vs. Lliga en viu
+            zones_list = ["Rim", "Paint", "MR", "Cor3", "ATB3"]
+            zone_names_cat = {
+                "Rim": "A prop del cercle (Rim)",
+                "Paint": "Pintura (Paint)",
+                "MR": "Mitjana distància (MR)",
+                "Cor3": "Triple cantonada (Corner 3)",
+                "ATB3": "Triple frontal (ATB3)"
+            }
+             # canvi: Definim games_played directament a app.py per resoldre la referència de Pylance
+            games_played = max(1.0, float(player_row.get("GamesPlayed", 1.0)))
+            table_rows = []
+            for zone in zones_list:
+                is_3pt = zone in ["Cor3", "ATB3"]
+                multiplier = 3.0 if is_3pt else 2.0
+                
+                # Càlculs de dades del jugador
+                fga = float(player_row.get(f"{zone} FGA", 0.0))
+                pct = float(player_row.get(f"{zone} %", 0.0))
+                total_shots = int(round(fga * games_played))
+                player_pps = multiplier * (pct / 100.0)
+                
+                # Càlculs de dades de la mitjana de lliga
+                league_pct = float(league_averages.get(f"{zone}_Pct", 0.0))
+                league_pps = multiplier * (league_pct / 100.0)
+                
+                # Diferència net de rendiment (PPS)
+                diff_pps = player_pps - league_pps
+                
+                table_rows.append({
+                    "Zona": zone_names_cat[zone],
+                    "Tirs Totals": total_shots,
+                    "Punts per Tir (PPS)": player_pps,
+                    "vs. Mitjana de la Lliga": diff_pps
+                })
+                
+            radar_table_df = pd.DataFrame(table_rows)
+            
+            # Disseny compacte unificat de píxels
+            radar_table_config = {
+                "Zona": st.column_config.TextColumn("Zona", width=240),
+                "Tirs Totals": st.column_config.NumberColumn("Tirs Totals", width="small"),
+                "Punts per Tir (PPS)": st.column_config.NumberColumn("Punts per Tir (PPS)", format="%.2f", width="small"),
+                "vs. Mitjana de la Lliga": st.column_config.NumberColumn("vs. Mitjana de la Lliga", format="%+.2f", width="medium")
+            }
+            
+            st.write(f"Resum de dades de tir detallades per zones de **{player_row['JUGADOR']}**:")
+            st.dataframe(
+                radar_table_df,
+                use_container_width=False,
+                column_config=radar_table_config,
+                hide_index=True
+            )
 
 # ----------------- VIEW 4: SCOUTING DE RIVALS -----------------
 elif view == "Scouting":
