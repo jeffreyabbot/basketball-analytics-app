@@ -21,7 +21,8 @@ from utils.data_loader import (
     tag_shot_team,
     load_and_aggregate_season_lineups,
     get_dir_cache_key,
-    load_all_raw_game_boxscores
+    load_all_raw_game_boxscores,
+    get_team_logo_path 
 )
 from utils.court_visualizer import draw_boxscore_zone_charts
 
@@ -141,7 +142,18 @@ if view == "Partits":
             estimated_game_mins = estimate_game_duration(t1_players, t2_players, pbp_df_param)
             
             # --- Subsection 1: Advanced Metrics (OER/DER/PACE) ---
+            # canvi: Escuts mitjans de fons a sobre de l'analitzador de partits
             st.subheader("Ràtings d'Eficiència de l'Equip")
+            col_lgA, col_lgSpace, col_lgB = st.columns([4, 1, 4])
+            with col_lgA:
+                logo_path_t1 = get_team_logo_path(t1_name, selected_season)
+                if logo_path_t1:
+                    st.image(logo_path_t1, width=90)
+            with col_lgB:
+                logo_path_t2 = get_team_logo_path(t2_name, selected_season)
+                if logo_path_t2:
+                    st.image(logo_path_t2, width=90)
+                    
             col1, col2, col3, col4 = st.columns(4)
             
             t1_stats = team_summary.iloc[0]
@@ -423,12 +435,21 @@ elif view == "Acumulats Lliga":
                     if fgm_c in df_t.columns and fga_c in df_t.columns:
                         df_t[pct_c] = (df_t[fgm_c] / df_t[fga_c] * 100.0).fillna(0.0)
 
-            # Mantenim el disseny unificat de columnes en píxels compactes
+            # canvi: Injectem la columna de ruta de la imatge de l'escut a cada fila
+            offense_df["Escut"] = offense_df["Team"].apply(lambda t: get_team_logo_path(t, selected_season) or "")
+            defense_df["Escut"] = defense_df["Team"].apply(lambda t: get_team_logo_path(t, selected_season) or "")
+            
+            # Re-ordenem les columnes per col·locar l'escut a l'esquerra de tot
+            view_off_cols = ["Escut"] + [c for c in offense_df.columns if c != "Escut"]
+            view_def_cols = ["Escut"] + [c for c in defense_df.columns if c != "Escut"]
+
+            # canvi: Afegit el component ImageColumn per pintar els logos en petit dins la classificació
             league_col_config = {
+                "Escut": st.column_config.ImageColumn("Escut", width="small"),
                 "Team": st.column_config.TextColumn("Team", width=260)
             }
             for col in offense_df.columns:
-                if col != "Team":
+                if col not in ["Team", "Escut"]:
                     league_col_config[col] = st.column_config.NumberColumn(col, width=65)
 
             tab_off, tab_def, tab_chart, tab_lineups = st.tabs([
@@ -441,7 +462,7 @@ elif view == "Acumulats Lliga":
             with tab_off:
                 st.write("Classificació d'Eficiència de la Lliga (Mètriques Ofensives recalculades en viu)")
                 st.dataframe(
-                    offense_df.sort_values("OERcal", ascending=False).style.format(precision=2), 
+                    offense_df[view_off_cols].sort_values("OERcal", ascending=False).style.format(precision=2), 
                     use_container_width=False, 
                     height=600,
                     column_config=league_col_config
@@ -450,7 +471,7 @@ elif view == "Acumulats Lliga":
             with tab_def:
                 st.write("Classificació d'Eficiència de la Lliga (Mètriques Defensives recalculades en viu)")
                 st.dataframe(
-                    defense_df.sort_values("DERcal", ascending=True).style.format(precision=2), 
+                    defense_df[view_def_cols].sort_values("DERcal", ascending=True).style.format(precision=2), 
                     use_container_width=False, 
                     height=600,
                     column_config=league_col_config
@@ -1069,6 +1090,23 @@ elif view == "Scouting":
         if team_A == team_B:
             st.warning("Selecciona dos equips diferents per poder fer la comparativa de scouting.")
         else:
+            # canvi: Capçalera amb escuts grans cara a cara a l'Scouting de Rivals
+            col_logo_A, col_vs, col_logo_B = st.columns([1, 0.5, 1])
+            with col_logo_A:
+                logo_path_A = get_team_logo_path(team_A, selected_season)
+                if logo_path_A:
+                    st.image(logo_path_A, width=140)
+                else:
+                    st.subheader(team_A)
+            with col_vs:
+                # Centrem el text VS respecte a l'alçada dels escuts
+                st.markdown("<h2 style='text-align: center; line-height: 140px; color: gray;'>VS</h2>", unsafe_allow_html=True)
+            with col_logo_B:
+                logo_path_B = get_team_logo_path(team_B, selected_season)
+                if logo_path_B:
+                    st.image(logo_path_B, width=140)
+                else:
+                    st.subheader(team_B)
             st.markdown("---")
             st.subheader("Comparativa de Rànquings i Eficiència de l'Equip")
             

@@ -529,3 +529,29 @@ def load_all_raw_game_boxscores(boxscore_dir, pbp_dir, cache_key):
         return pd.DataFrame()
         
     return pd.concat(all_game_summaries, ignore_index=True)
+# Afegeix-ho a baix de tot de /utils/data_loader.py:
+def get_team_logo_path(team_name, selected_season, raw_dir="data/raw"):
+    """
+    Attempts to find a matching team logo image (.png, .jpg, .jpeg) case-insensitively.
+    Returns the path to the image if found, otherwise returns None.
+    """
+    # Busquem la carpeta 'logos' de manera insensible a les majúscules
+    logos_dir = resolve_path_case_insensitive(raw_dir, selected_season, "logos")
+    if not logos_dir or not os.path.exists(logos_dir):
+        return None
+        
+    # Standarditzem el nom de l'equip (ex: "BARICENTRO BARBERA" -> "baricentro_barbera")
+    clean_name = str(team_name).lower().strip().replace(" ", "_")
+    
+    try:
+        entries = os.listdir(logos_dir)
+    except OSError:
+        return None
+        
+    for entry in entries:
+        entry_lower = entry.lower()
+        # Si el nom de l'equip està contingut en el nom de l'arxiu d'imatge
+        if clean_name in entry_lower and entry_lower.endswith((".png", ".jpg", ".jpeg")):
+            return os.path.join(logos_dir, entry)
+            
+    return None
