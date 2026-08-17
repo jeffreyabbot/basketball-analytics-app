@@ -129,74 +129,107 @@ def draw_boxscore_zone_charts(team_summary, t1_players, t2_players, t1_name, t2_
     )
     
     return fig_vol, fig_pps
-def draw_player_radar_chart(player_row, league_averages):
+def draw_player_radar_charts(player_row, league_averages, league_max_fga):
     """
-    Draws an accessible polar (radar) chart comparing a player's 
-    shooting percentages across the 5 FIBA zones against the league average.
+    Renders two side-by-side polar (radar) charts comparing a player's profile:
+    1. Volume Profile (Average FGA per zone compared to league averages)
+    2. Efficiency Profile (FG% per zone with total attempts displayed directly in axis labels)
     """
-    categories = [
+    # --- RÀDAR 1: GRÀFIC DE VOLUM DE TIRS (FGA) ---
+    categories_vol = [
         "A prop del cercle (Rim)", 
         "Pintura (Paint)", 
         "Mitjana distància (MR)", 
         "Triple cantonada (Corner 3)", 
         "Triple frontal (ATB3)"
     ]
+    categories_vol_closed = categories_vol + [categories_vol[0]]
     
-    # Extract player percentages (append first element to close the loop in radar charts!)
-    player_vals = [
+    # Valors del jugador per partit (FGA)
+    player_vol = [
+        float(player_row.get("Rim FGA", 0.0)),
+        float(player_row.get("Paint FGA", 0.0)),
+        float(player_row.get("MR FGA", 0.0)),
+        float(player_row.get("Cor3 FGA", 0.0)),
+        float(player_row.get("ATB3 FGA", 0.0))
+    ]
+    player_vol.append(player_vol[0])
+    
+    # Mitjana de lliga de tirs intentats
+    league_vol = [
+        float(league_averages.get("Rim_FGA", 0.0)),
+        float(league_averages.get("Paint_FGA", 0.0)),
+        float(league_averages.get("MR_FGA", 0.0)),
+        float(league_averages.get("Cor3_FGA", 0.0)),
+        float(league_averages.get("ATB3_FGA", 0.0))
+    ]
+    league_vol.append(league_vol[0])
+    
+    fig_vol = go.Figure()
+    fig_vol.add_trace(go.Scatterpolar(
+        r=league_vol, theta=categories_vol_closed, fill='toself',
+        fillcolor='rgba(255, 127, 14, 0.15)', line=dict(color='#ff7f0e', width=2, dash='dash'),
+        name="Mitjana Volum Lliga"
+    ))
+    fig_vol.add_trace(go.Scatterpolar(
+        r=player_vol, theta=categories_vol_closed, fill='toself',
+        fillcolor='rgba(31, 119, 180, 0.35)', line=dict(color='#1f77b4', width=3),
+        name=player_row["JUGADOR"]
+    ))
+    
+    max_fga_range = max([max(player_vol), max(league_vol), 1.0])
+    fig_vol.update_layout(
+        title="Volum d'Intents de Tir (FGA per Partit)",
+        polar=dict(radialaxis=dict(visible=True, range=[0, max_fga_range])),
+        showlegend=True, height=450, margin=dict(l=40, r=40, t=40, b=40)
+    )
+
+    # --- RÀDAR 2: GRÀFIC D'EFICIÈNCIA (% D'ENCERT AMB SÈRIES VISIBLES) ---
+    # canvi: Modifiquem l'etiquetatge per fer visible el volum de tirs real del jugador i evitar enganys del 100%
+    games_played = max(1.0, float(player_row.get("GamesPlayed", 1.0)))
+    categories_eff = [
+        f"Rim ({int(round(float(player_row.get('Rim FGA', 0.0)) * games_played))} tirs)",
+        f"Paint ({int(round(float(player_row.get('Paint FGA', 0.0)) * games_played))} tirs)",
+        f"MR ({int(round(float(player_row.get('MR FGA', 0.0)) * games_played))} tirs)",
+        f"Corner 3 ({int(round(float(player_row.get('Cor3 FGA', 0.0)) * games_played))} tirs)",
+        f"ATB3 ({int(round(float(player_row.get('ATB3 FGA', 0.0)) * games_played))} tirs)"
+    ]
+    categories_eff_closed = categories_eff + [categories_eff[0]]
+    
+    player_eff = [
         float(player_row.get("Rim %", 0.0)),
         float(player_row.get("Paint %", 0.0)),
         float(player_row.get("MR %", 0.0)),
         float(player_row.get("Cor3 %", 0.0)),
         float(player_row.get("ATB3 %", 0.0))
     ]
-    player_vals.append(player_vals[0])
+    player_eff.append(player_eff[0])
     
-    # Extract league averages
-    league_vals = [
-        float(league_averages.get("Rim", 0.0)),
-        float(league_averages.get("Paint", 0.0)),
-        float(league_averages.get("MR", 0.0)),
-        float(league_averages.get("Cor3", 0.0)),
-        float(league_averages.get("ATB3", 0.0))
+    league_eff = [
+        float(league_averages.get("Rim_Pct", 0.0)),
+        float(league_averages.get("Paint_Pct", 0.0)),
+        float(league_averages.get("MR_Pct", 0.0)),
+        float(league_averages.get("Cor3_Pct", 0.0)),
+        float(league_averages.get("ATB3_Pct", 0.0))
     ]
-    league_vals.append(league_vals[0])
+    league_eff.append(league_eff[0])
     
-    categories_closed = categories + [categories[0]]
-    
-    fig = go.Figure()
-    
-    # Trace 1: Mitjana de la Lliga (Taronja transparent)
-    fig.add_trace(go.Scatterpolar(
-        r=league_vals,
-        theta=categories_closed,
-        fill='toself',
-        fillcolor='rgba(255, 127, 14, 0.15)',
-        line=dict(color='#ff7f0e', width=2, dash='dash'),
-        name="Mitjana de la Lliga"
+    fig_eff = go.Figure()
+    fig_eff.add_trace(go.Scatterpolar(
+        r=league_eff, theta=categories_eff_closed, fill='toself',
+        fillcolor='rgba(255, 127, 14, 0.15)', line=dict(color='#ff7f0e', width=2, dash='dash'),
+        name="Mitjana % Lliga"
     ))
-    
-    # Trace 2: Jugador seleccionat (Blau de l' staff)
-    fig.add_trace(go.Scatterpolar(
-        r=player_vals,
-        theta=categories_closed,
-        fill='toself',
-        fillcolor='rgba(31, 119, 180, 0.35)',
-        line=dict(color='#1f77b4', width=3),
+    fig_eff.add_trace(go.Scatterpolar(
+        r=player_eff, theta=categories_eff_closed, fill='toself',
+        fillcolor='rgba(31, 119, 180, 0.35)', line=dict(color='#1f77b4', width=3),
         name=player_row["JUGADOR"]
     ))
     
-    fig.update_layout(
-        polar=dict(
-            radialaxis=dict(
-                visible=True,
-                range=[0, 100],
-                ticksuffix="%"
-            )
-        ),
-        showlegend=True,
-        height=450,
-        margin=dict(l=40, r=40, t=40, b=40)
+    fig_eff.update_layout(
+        title="Eficiència d'Encert (% de l'Equip)",
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100], ticksuffix="%")),
+        showlegend=True, height=450, margin=dict(l=40, r=40, t=40, b=40)
     )
     
-    return fig
+    return fig_vol, fig_eff

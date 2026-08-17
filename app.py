@@ -4,8 +4,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import re
-# Cerca la importació del court_visualizer i afegeix draw_player_radar_chart:
-from utils.court_visualizer import draw_boxscore_zone_charts, draw_player_radar_chart
+# Cerca la importació de draw_player_radar_chart i canvia-la per aquesta:
+from utils.court_visualizer import draw_boxscore_zone_charts, draw_player_radar_charts
 from utils.data_loader import (
     get_available_seasons, 
     load_all_game_options, 
@@ -955,27 +955,47 @@ elif view == "Tirs Jugadors":
                 column_config=player_index_config
             )
             
-            # canvi: MÒDUL DE RÀDAR DE TIR DE JUGADOR DINÀMIC AMB LLEGENDA DE LLIGA
+            # canvi: MÒDUL DE DOBLE RÀDAR EN PARAL·LEL (VOLUM VS EFICIÈNCIA AMB INTEGRACIÓ DE MOSTRES)
             st.markdown("---")
-            st.subheader("📊 Gràfic de Ràdar de Tir de Jugador")
-            st.write("Selecciona qualsevol jugador de la llista filtrada de dalt per comparar-ne l'eficiència per zones contra la mitjana global de la lliga.")
+            st.subheader("📊 Ràdars de Tir Comparatius del Jugador")
+            st.write("Analitza el perfil del jugador: el gràfic de l'esquerra mostra on llança (Volum) i el de la dreta mostra quant encerta (Eficiència), especificant el número total de tirs fets als eixos.")
             
             players_radar_list = sorted(list(filtered_players["JUGADOR"].unique()))
             selected_radar_player = st.selectbox("Selecciona un jugador per veure el seu ràdar de tir", players_radar_list)
             
             player_row = filtered_players[filtered_players["JUGADOR"] == selected_radar_player].iloc[0]
             
-            # Calculem la mitjana global de la lliga de tirs d'aquella zona (només sobre llançaments llançats reals > 0)
+            # Càlcul de mètriques de la lliga (mitjana d'intents i de percentatges sobre llançadors reals)
             league_averages = {
-                "Rim": master_players[master_players["Rim FGA"] > 0]["Rim %"].mean() or 0.0,
-                "Paint": master_players[master_players["Paint FGA"] > 0]["Paint %"].mean() or 0.0,
-                "MR": master_players[master_players["MR FGA"] > 0]["MR %"].mean() or 0.0,
-                "Cor3": master_players[master_players["Cor3 FGA"] > 0]["Cor3 %"].mean() or 0.0,
-                "ATB3": master_players[master_players["ATB3 FGA"] > 0]["ATB3 %"].mean() or 0.0
+                "Rim_FGA": master_players["Rim FGA"].mean() or 0.0,
+                "Paint_FGA": master_players["Paint FGA"].mean() or 0.0,
+                "MR_FGA": master_players["MR FGA"].mean() or 0.0,
+                "Cor3_FGA": master_players["Cor3 FGA"].mean() or 0.0,
+                "ATB3_FGA": master_players["ATB3 FGA"].mean() or 0.0,
+                "Rim_Pct": master_players[master_players["Rim FGA"] > 0]["Rim %"].mean() or 0.0,
+                "Paint_Pct": master_players[master_players["Paint FGA"] > 0]["Paint %"].mean() or 0.0,
+                "MR_Pct": master_players[master_players["MR FGA"] > 0]["MR %"].mean() or 0.0,
+                "Cor3_Pct": master_players[master_players["Cor3 FGA"] > 0]["Cor3 %"].mean() or 0.0,
+                "ATB3_Pct": master_players[master_players["ATB3 FGA"] > 0]["ATB3 %"].mean() or 0.0
             }
             
-            fig_radar = draw_player_radar_chart(player_row, league_averages)
-            st.plotly_chart(fig_radar, use_container_width=True)
+            # Calculem el rang de de volum màxim per a l'escala
+            league_max_fga = {
+                "Rim": master_players["Rim FGA"].max() or 1.0,
+                "Paint": master_players["Paint FGA"].max() or 1.0,
+                "MR": master_players["MR FGA"].max() or 1.0,
+                "Cor3": master_players["Cor3 FGA"].max() or 1.0,
+                "ATB3": master_players["ATB3 FGA"].max() or 1.0
+            }
+            
+            # Generem el doble ràdar programàtic lliure d'errors
+            fig_vol_rad, fig_eff_rad = draw_player_radar_charts(player_row, league_averages, league_max_fga)
+            
+            col_rad1, col_map2 = st.columns(2)
+            with col_rad1:
+                st.plotly_chart(fig_vol_rad, use_container_width=True)
+            with col_map2:
+                st.plotly_chart(fig_eff_rad, use_container_width=True)
 
 # ----------------- VIEW 4: SCOUTING DE RIVALS -----------------
 elif view == "Scouting":
