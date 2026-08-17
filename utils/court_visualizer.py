@@ -129,3 +129,74 @@ def draw_boxscore_zone_charts(team_summary, t1_players, t2_players, t1_name, t2_
     )
     
     return fig_vol, fig_pps
+def draw_player_radar_chart(player_row, league_averages):
+    """
+    Draws an accessible polar (radar) chart comparing a player's 
+    shooting percentages across the 5 FIBA zones against the league average.
+    """
+    categories = [
+        "A prop del cercle (Rim)", 
+        "Pintura (Paint)", 
+        "Mitjana distància (MR)", 
+        "Triple cantonada (Corner 3)", 
+        "Triple frontal (ATB3)"
+    ]
+    
+    # Extract player percentages (append first element to close the loop in radar charts!)
+    player_vals = [
+        float(player_row.get("Rim %", 0.0)),
+        float(player_row.get("Paint %", 0.0)),
+        float(player_row.get("MR %", 0.0)),
+        float(player_row.get("Cor3 %", 0.0)),
+        float(player_row.get("ATB3 %", 0.0))
+    ]
+    player_vals.append(player_vals[0])
+    
+    # Extract league averages
+    league_vals = [
+        float(league_averages.get("Rim", 0.0)),
+        float(league_averages.get("Paint", 0.0)),
+        float(league_averages.get("MR", 0.0)),
+        float(league_averages.get("Cor3", 0.0)),
+        float(league_averages.get("ATB3", 0.0))
+    ]
+    league_vals.append(league_vals[0])
+    
+    categories_closed = categories + [categories[0]]
+    
+    fig = go.Figure()
+    
+    # Trace 1: Mitjana de la Lliga (Taronja transparent)
+    fig.add_trace(go.Scatterpolar(
+        r=league_vals,
+        theta=categories_closed,
+        fill='toself',
+        fillcolor='rgba(255, 127, 14, 0.15)',
+        line=dict(color='#ff7f0e', width=2, dash='dash'),
+        name="Mitjana de la Lliga"
+    ))
+    
+    # Trace 2: Jugador seleccionat (Blau de l' staff)
+    fig.add_trace(go.Scatterpolar(
+        r=player_vals,
+        theta=categories_closed,
+        fill='toself',
+        fillcolor='rgba(31, 119, 180, 0.35)',
+        line=dict(color='#1f77b4', width=3),
+        name=player_row["JUGADOR"]
+    ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                ticksuffix="%"
+            )
+        ),
+        showlegend=True,
+        height=450,
+        margin=dict(l=40, r=40, t=40, b=40)
+    )
+    
+    return fig

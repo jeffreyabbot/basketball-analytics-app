@@ -4,7 +4,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import re
-
+# Cerca la importació del court_visualizer i afegeix draw_player_radar_chart:
+from utils.court_visualizer import draw_boxscore_zone_charts, draw_player_radar_chart
 from utils.data_loader import (
     get_available_seasons, 
     load_all_game_options, 
@@ -853,7 +854,7 @@ elif view == "Acumulats Lliga":
                             )
 # ----------------- VIEW 3: PLAYER SHOOTING INDEX -----------------
 elif view == "Tirs Jugadors":
-    st.title(f"Tirs Jugadors ({selected_season.replace('_', ' ')})")
+    st.title(f"Índex de Tir dels Jugadors ({selected_season.replace('_', ' ')})")
     
     if not AGG_FILE or not os.path.exists(AGG_FILE):
         st.info("No s'han trobat acumulats de lliga. Comprova els fitxers d'acumulats de la temporada.")
@@ -866,7 +867,7 @@ elif view == "Tirs Jugadors":
         master_players["eFG%"] = pd.to_numeric(master_players["eFG%"], errors='coerce')
         master_players["FGA"] = pd.to_numeric(master_players["FGA"], errors='coerce')
         
-        for col in ["Rim FGA", "Paint FGA", "MR FGA", "Cor3 FGA", "ATB3 FGA"]:
+        for col in ["Rim FGA", "Paint FGA", "MR FGA", "Cor3 FGA", "ATB3 FGA", "Rim %", "Paint %", "MR %", "Cor3 %", "ATB3 %"]:
             if col in master_players.columns:
                 master_players[col] = pd.to_numeric(master_players[col], errors='coerce').fillna(0.0)
         
@@ -875,8 +876,15 @@ elif view == "Tirs Jugadors":
         
         st.write("Motor de cerca acumulats dels jugadors de la temporada. Els percentatges indiquen l'**Eficiència de Tir**, mentre que el **FGA** indica el volum total d'intents.")
         
-        # Leaderboard Filters
+        # canvi: Afegit filtre d'Equip obligatori per a la llista d'índex de tir
         st.subheader("Filtres de la Taula")
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            player_teams = ["Tots els equips"] + sorted(list(master_players["Team"].dropna().unique()))
+            selected_player_team = st.selectbox("Filtra per Equip", player_teams)
+        with col_t2:
+            sort_metric_sel = st.selectbox("Criteri de Classificació Principal", ["eFG% (Eficiència)", "Punts", "Partits Jugats", "FGA (Volum)", "Minuts per Partit"])
+            
         col_filt1, col_filt2, col_filt3 = st.columns(3)
         with col_filt1:
             min_games = st.slider("Mínim de partits jugats", 1, int(master_players["GamesPlayed"].max() or 20), 5)
@@ -885,63 +893,89 @@ elif view == "Tirs Jugadors":
         with col_filt3:
             min_mins = st.slider("Mínim de minuts per partit (Presència)", 0.0, float(master_players["MinPerGame"].max() or 40.0), 10.0, step=1.0)
             
-        filtered_players = master_players[
-            (master_players["GamesPlayed"] >= min_games) &
-            (master_players["FGA"] >= min_fga) &
-            (master_players["MinPerGame"] >= min_mins)
+        # Apliquem el filtre d'equip i de volum creuat
+        filtered_players = master_players.copy()
+        if selected_player_team != "Tots els equips":
+            filtered_players = filtered_players[filtered_players["Team"] == selected_player_team]
+            
+        filtered_players = filtered_players[
+            (filtered_players["GamesPlayed"] >= min_games) &
+            (filtered_players["FGA"] >= min_fga) &
+            (filtered_players["MinPerGame"] >= min_mins)
         ]
         
-        sort_metric_sel = st.selectbox("Criteri de Classificació Principal", ["eFG% (Eficiència)", "Punts", "Partits Jugats", "FGA (Volum)", "Minuts per Partit"])
-        
-        sort_metric_mapping = {
-            "eFG% (Eficiència)": "eFG%",
-            "Punts": "PTS",
-            "Partits Jugats": "GamesPlayed",
-            "FGA (Volum)": "FGA",
-            "Minuts per Partit": "MinPerGame"
-        }
-        sort_metric = sort_metric_mapping[sort_metric_sel]
-        
-        sorted_players = filtered_players.sort_values(sort_metric, ascending=False)
-        
-        view_cols = [
-            "JUGADOR", "Team", "GamesPlayed", "TIME", "FGA", "PTS", "eFG%", 
-            "Rim FGA", "Rim %", "Paint FGA", "Paint %", "MR FGA", "MR %", "Cor3 FGA", "Cor3 %", "ATB3 FGA", "ATB3 %"
-        ]
-        
-        # Mètode dinàmic d'autoajust compacte en píxels per a l'índex de tir (sin estiramiento)
-        player_index_config = {
-            "JUGADOR": st.column_config.TextColumn("JUGADOR", width=260),
-            "Team": st.column_config.TextColumn("Team", width=160)
-        }
-        for col in view_cols:
-            if col not in ["JUGADOR", "Team"]:
-                if col == "TIME":
-                    player_index_config[col] = st.column_config.TextColumn(col, width=65)
-                else:
-                    player_index_config[col] = st.column_config.NumberColumn(col, width=60)
-        
-        st.dataframe(
-            sorted_players[view_cols].style.format({
-                "TIME": "{}", 
-                "FGA": "{:.1f}",
-                "PTS": "{:.1f}",
-                "eFG%": "{:.2f}%",
-                "TS%": "{:.2f}%",
-                "Rim FGA": "{:.1f}",
-                "Rim %": "{:.1f}%",
-                "Paint FGA": "{:.1f}",
-                "Paint %": "{:.1f}%",
-                "MR FGA": "{:.1f}",
-                "MR %": "{:.1f}%",
-                "Cor3 FGA": "{:.1f}",
-                "Cor3 %": "{:.1f}%",
-                "ATB3 FGA": "{:.1f}",
-                "ATB3 %": "{:.1f}%"
-            }),
-            use_container_width=False,
-            column_config=player_index_config
-        )
+        if filtered_players.empty:
+            st.info("No hi ha jugadors que compleixin els filtres seleccionats.")
+        else:
+            sort_metric_mapping = {
+                "eFG% (Eficiència)": "eFG%",
+                "Punts": "PTS",
+                "Partits Jugats": "GamesPlayed",
+                "FGA (Volum)": "FGA",
+                "Minuts per Partit": "MinPerGame"
+            }
+            sort_metric = sort_metric_mapping[sort_metric_sel]
+            sorted_players = filtered_players.sort_values(sort_metric, ascending=False)
+            
+            view_cols = [
+                "JUGADOR", "Team", "GamesPlayed", "TIME", "FGA", "PTS", "eFG%", 
+                "Rim FGA", "Rim %", "Paint FGA", "Paint %", "MR FGA", "MR %", "Cor3 FGA", "Cor3 %", "ATB3 FGA", "ATB3 %"
+            ]
+            
+            player_index_config = {
+                "JUGADOR": st.column_config.TextColumn("JUGADOR", width=260),
+                "Team": st.column_config.TextColumn("Team", width=160)
+            }
+            for col in view_cols:
+                if col not in ["JUGADOR", "Team"]:
+                    if col == "TIME":
+                        player_index_config[col] = st.column_config.TextColumn(col, width=65)
+                    else:
+                        player_index_config[col] = st.column_config.NumberColumn(col, width=60)
+            
+            st.dataframe(
+                sorted_players[view_cols].style.format({
+                    "TIME": "{}", 
+                    "FGA": "{:.1f}",
+                    "PTS": "{:.1f}",
+                    "eFG%": "{:.2f}%",
+                    "TS%": "{:.2f}%",
+                    "Rim FGA": "{:.1f}",
+                    "Rim %": "{:.1f}%",
+                    "Paint FGA": "{:.1f}",
+                    "Paint %": "{:.1f}%",
+                    "MR FGA": "{:.1f}",
+                    "MR %": "{:.1f}%",
+                    "Cor3 FGA": "{:.1f}",
+                    "Cor3 %": "{:.1f}%",
+                    "ATB3 FGA": "{:.1f}",
+                    "ATB3 %": "{:.1f}%"
+                }),
+                use_container_width=False,
+                column_config=player_index_config
+            )
+            
+            # canvi: MÒDUL DE RÀDAR DE TIR DE JUGADOR DINÀMIC AMB LLEGENDA DE LLIGA
+            st.markdown("---")
+            st.subheader("📊 Gràfic de Ràdar de Tir de Jugador")
+            st.write("Selecciona qualsevol jugador de la llista filtrada de dalt per comparar-ne l'eficiència per zones contra la mitjana global de la lliga.")
+            
+            players_radar_list = sorted(list(filtered_players["JUGADOR"].unique()))
+            selected_radar_player = st.selectbox("Selecciona un jugador per veure el seu ràdar de tir", players_radar_list)
+            
+            player_row = filtered_players[filtered_players["JUGADOR"] == selected_radar_player].iloc[0]
+            
+            # Calculem la mitjana global de la lliga de tirs d'aquella zona (només sobre llançaments llançats reals > 0)
+            league_averages = {
+                "Rim": master_players[master_players["Rim FGA"] > 0]["Rim %"].mean() or 0.0,
+                "Paint": master_players[master_players["Paint FGA"] > 0]["Paint %"].mean() or 0.0,
+                "MR": master_players[master_players["MR FGA"] > 0]["MR %"].mean() or 0.0,
+                "Cor3": master_players[master_players["Cor3 FGA"] > 0]["Cor3 %"].mean() or 0.0,
+                "ATB3": master_players[master_players["ATB3 FGA"] > 0]["ATB3 %"].mean() or 0.0
+            }
+            
+            fig_radar = draw_player_radar_chart(player_row, league_averages)
+            st.plotly_chart(fig_radar, use_container_width=True)
 
 # ----------------- VIEW 4: SCOUTING DE RIVALS -----------------
 elif view == "Scouting":
