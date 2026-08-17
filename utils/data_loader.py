@@ -5,6 +5,7 @@ import os
 import re
 import datetime
 import streamlit as st
+import base64
 
 def resolve_path_case_insensitive(base_dir, *subdirs_and_file):
     """
@@ -529,19 +530,17 @@ def load_all_raw_game_boxscores(boxscore_dir, pbp_dir, cache_key):
         return pd.DataFrame()
         
     return pd.concat(all_game_summaries, ignore_index=True)
-# Afegeix-ho a baix de tot de /utils/data_loader.py:
 def get_team_logo_path(team_name, selected_season, raw_dir="data/raw"):
     """
     Attempts to find a matching team logo image (.png, .jpg, .jpeg) case-insensitively.
-    Returns the path to the image if found, otherwise returns None.
+    Ignores spaces, underscores, and hyphens to guarantee matches.
     """
-    # Busquem la carpeta 'logos' de manera insensible a les majúscules
     logos_dir = resolve_path_case_insensitive(raw_dir, selected_season, "logos")
     if not logos_dir or not os.path.exists(logos_dir):
         return None
         
-    # Standarditzem el nom de l'equip (ex: "BARICENTRO BARBERA" -> "baricentro_barbera")
-    clean_name = str(team_name).lower().strip().replace(" ", "_")
+    # canvi: Neteja estricta de caràcters especials en el nom cercat (ex: "BARICENTRO BARBERA" -> "baricentrobarbera")
+    clean_target = re.sub(r'[\s_\-]', '', str(team_name)).lower().strip()
     
     try:
         entries = os.listdir(logos_dir)
@@ -550,8 +549,27 @@ def get_team_logo_path(team_name, selected_season, raw_dir="data/raw"):
         
     for entry in entries:
         entry_lower = entry.lower()
-        # Si el nom de l'equip està contingut en el nom de l'arxiu d'imatge
-        if clean_name in entry_lower and entry_lower.endswith((".png", ".jpg", ".jpeg")):
+        # Neteja de caràcters especials en el nom de l'arxiu real de GitHub
+        clean_entry = re.sub(r'[\s_\-]', '', entry_lower).replace(".png", "").replace(".jpg", "").replace(".jpeg", "")
+        
+        if clean_target in clean_entry and entry_lower.endswith((".png", ".jpg", ".jpeg")):
             return os.path.join(logos_dir, entry)
             
     return None
+def get_team_logo_base64_url(team_name, selected_season):
+    """
+    Finds the team logo, reads it, encodes it, and returns a fully qualified
+    base64 Data URL safe for st.column_config.ImageColumn in table cells.
+    """
+    path = get_team_logo_path(team_name, selected_season)
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode()
+        ext = os.path.splitext(path)[1].lower().replace(".", "")
+        if ext not in ["png", "jpg", "jpeg"]:
+            ext = "png"
+        return f"data:image/{ext};base64,{encoded}"
+    except Exception:
+        return None
