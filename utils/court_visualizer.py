@@ -1,7 +1,14 @@
 import plotly.graph_objects as go
 import pandas as pd
 
-def draw_boxscore_zone_charts(team_summary, t1_players, t2_players, t1_name, t2_name, selected_team, selected_player="All", league_pps=0.95):
+def draw_boxscore_zone_charts(team_summary, t1_players, t2_players, t1_name, t2_name, selected_team, selected_player="All", *args, **kwargs):
+    """
+    Renders two side-by-side analytical horizontal bar charts of the 5 FIBA zones,
+    pulling the exact pre-calculated data directly from the Boxscore files.
+    """
+    # Extraiem el paràmetre de lliga de manera segura de kwargs
+    league_pps = kwargs.get("league_pps", 0.95)
+    
     """
     Renders two side-by-side analytical horizontal bar charts of the 5 FIBA zones,
     pulling the exact pre-calculated data directly from the Boxscore files.
