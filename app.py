@@ -134,9 +134,10 @@ view = st.sidebar.radio(
     ["Partits", "Acumulats Lliga", "Scouting Jugadors", "Scouting"]
 )
 # canvi: Afegida nota al peu de pàgina de seguretat a la barra lateral de l'staff
+st.sidebar.markdown("---")
 st.sidebar.markdown(
     '''
-    <div style="position: absolute; bottom: 15px; left: 15px; font-size: 0.75rem; color: rgba(128, 128, 128, 0.55); text-align: left; line-height: 1.4; font-family: sans-serif;">
+    <div style="font-size: 0.75rem; color: rgba(128, 128, 128, 0.65); text-align: left; line-height: 1.4;">
         Dades FCBQ<br>
         Víctor Solanes 2026
     </div>
