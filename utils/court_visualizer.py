@@ -204,7 +204,7 @@ def draw_player_radar_charts(player_row, league_averages, league_max_fga):
     ))
     
     fig_eff.update_layout(
-        title="Eficiència d'Encert",
+        title="% d'Encert",
         polar=dict(radialaxis=dict(visible=True, range=[0, 100], ticksuffix="%")),
         showlegend=True, height=450, margin=dict(l=40, r=40, t=40, b=40)
     )
