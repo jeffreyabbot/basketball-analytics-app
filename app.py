@@ -74,6 +74,31 @@ def get_logo_html_centered(logo_path, max_height=80, max_width=120):
         '''
     except Exception:
         return ""
+# Afegeix-ho a dalt d'app.py, a sota del mòdul de base64/HTML del logo:
+def calculate_league_average_pps(raw_games_df):
+    """
+    Calculates the exact league-wide Points Per Shot (PPS) from raw shot counts
+    for the selected season across all games.
+    """
+    if raw_games_df.empty:
+        return 0.95 # Fallback històric per defecte de Copa Catalunya
+    try:
+        fga_cols = ["Rim FGA", "Paint FGA", "MR FGA", "Cor3 FGA", "ATB3 FGA"]
+        total_attempts = sum(raw_games_df[col].sum() for col in fga_cols if col in raw_games_df.columns)
+        
+        twos_cols = ["Rim FGM", "Paint FGM", "MR FGM"]
+        threes_cols = ["Cor3 FGM", "ATB3 FGM"]
+        
+        total_2pm = sum(raw_games_df[col].sum() for col in twos_cols if col in raw_games_df.columns)
+        total_3pm = sum(raw_games_df[col].sum() for col in threes_cols if col in raw_games_df.columns)
+        
+        total_points = 2.0 * total_2pm + 3.0 * total_3pm
+        
+        if total_attempts > 0:
+            return total_points / total_attempts
+        return 0.95
+    except Exception:
+        return 0.95
 # --- Rest of the application ---
 
 RAW_DIR = "data/raw"
@@ -284,6 +309,12 @@ if view == "Partits":
                     if selected_team != "Tots els equips":
                         pbp_df_filtered = pbp_df_filtered[pbp_df_filtered["Shot_Team"] == selected_team]
                         
+                    # canvi: Calculem el PPS mig de la lliga des de tots els tirs abans de dibuixar el gràfic de barres
+                    pbp_cache_key = get_dir_cache_key(BOX_DIR)
+                    raw_games_boxscores = load_all_raw_game_boxscores(BOX_DIR, PBP_DIR, pbp_cache_key)
+                    league_pps_val = calculate_league_average_pps(raw_games_boxscores)
+
+                    # Renders side-by-side shot charts direct de la base de dades amb la línia dinàmica de lliga
                     fig_vol, fig_pps = draw_boxscore_zone_charts(
                         team_summary=team_summary,
                         t1_players=t1_players,
@@ -291,7 +322,8 @@ if view == "Partits":
                         t1_name=t1_name,
                         t2_name=t2_name,
                         selected_team=selected_team,
-                        selected_player=shot_player
+                        selected_player=shot_player,
+                        league_pps=league_pps_val # <--- Enviem el PPS dinàmic de lliga calculat
                     )
                     
                     col_map1, col_map2 = st.columns(2)

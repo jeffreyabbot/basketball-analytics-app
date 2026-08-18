@@ -1,7 +1,7 @@
 import plotly.graph_objects as go
 import pandas as pd
 
-def draw_boxscore_zone_charts(team_summary, t1_players, t2_players, t1_name, t2_name, selected_team, selected_player="All"):
+def draw_boxscore_zone_charts(team_summary, t1_players, t2_players, t1_name, t2_name, selected_team, selected_player="All", league_pps=0.95):
     """
     Renders two side-by-side analytical horizontal bar charts of the 5 FIBA zones,
     pulling the exact pre-calculated data directly from the Boxscore files.
@@ -118,7 +118,13 @@ def draw_boxscore_zone_charts(team_summary, t1_players, t2_players, t1_name, t2_
         text=[f"{val:.2f} PPS" for val in pps_vals],
         textposition='inside' if max(pps_vals or [0.0]) > 0 else 'outside'
     ))
-    fig_pps.add_vline(x=1.0, line_dash="dash", line_color="orange", annotation_text="Eficiència Estàndard (1.0 PPS)", annotation_position="top right")
+    fig_pps.add_vline(
+        x=league_pps, 
+        line_dash="dash", 
+        line_color="orange", 
+        annotation_text=f"Mitjana de la Lliga ({league_pps:.2f} PPS)", 
+        annotation_position="top right"
+    )
     fig_pps.update_layout(
         title=f"Eficiència de Tir (Points Per Shot) - {display_title_player}",
         xaxis=dict(title="Punts per llançament (PPS)", showgrid=True, range=[0.0, 3.0]),
