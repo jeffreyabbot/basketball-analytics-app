@@ -4,9 +4,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import re
+import glob
 import base64
-# Cerca la importació de draw_player_radar_chart i canvia-la per aquesta:
-from utils.court_visualizer import draw_boxscore_zone_charts, draw_player_radar_charts, draw_team_seasonal_zone_charts
+
 from utils.data_loader import (
     get_available_seasons, 
     load_all_game_options, 
@@ -20,14 +20,14 @@ from utils.data_loader import (
     normalize_and_format_player_times,
     parse_time_to_minutes,
     tag_shot_team,
-    load_and_aggregate_season_lineups,
     get_dir_cache_key,
+    load_and_aggregate_season_lineups,
     load_all_raw_game_boxscores,
-    get_team_logo_base64_url,
+    calculate_combo_stats_metrics,
     get_team_logo_path,
-    calculate_combo_stats_metrics 
+    get_team_logo_base64_url
 )
-from utils.court_visualizer import draw_boxscore_zone_charts
+from utils.court_visualizer import draw_boxscore_zone_charts, draw_player_radar_charts, draw_team_seasonal_zone_charts
 
 # Page config & Theme (Must be first)
 st.set_page_config(page_title="Anàlisi de Bàsquet - Staff", layout="wide")
@@ -55,11 +55,9 @@ def check_password():
         st.stop()
 
 check_password()
+
+# Helpers de format de logos a fons en base64 per evitar deformacions
 def get_logo_html_centered(logo_path, max_height=80, max_width=120):
-    """
-    Reads a local image file, encodes it to base64, and returns a 
-    centered, size-constrained HTML img tag to prevent aspect ratio distortions.
-    """
     if not logo_path or not os.path.exists(logo_path):
         return ""
     try:
@@ -75,14 +73,10 @@ def get_logo_html_centered(logo_path, max_height=80, max_width=120):
         '''
     except Exception:
         return ""
-# Afegeix-ho a dalt d'app.py, a sota del mòdul de base64/HTML del logo:
+
 def calculate_league_average_pps(raw_games_df):
-    """
-    Calculates the exact league-wide Points Per Shot (PPS) from raw shot counts
-    for the selected season across all games.
-    """
     if raw_games_df.empty:
-        return 0.95 # Fallback històric per defecte de Copa Catalunya
+        return 0.95
     try:
         fga_cols = ["Rim FGA", "Paint FGA", "MR FGA", "Cor3 FGA", "ATB3 FGA"]
         total_attempts = sum(raw_games_df[col].sum() for col in fga_cols if col in raw_games_df.columns)
@@ -100,6 +94,7 @@ def calculate_league_average_pps(raw_games_df):
         return 0.95
     except Exception:
         return 0.95
+
 # --- Rest of the application ---
 
 RAW_DIR = "data/raw"
@@ -108,7 +103,7 @@ CB_BLUE = "#1f77b4"
 CB_ORANGE = "#ff7f0e"
 CB_NEUTRAL = "#4a4a4a"
 
-st.sidebar.title("Analítica COPA CATALUNYA")
+st.sidebar.title("🏀 Hub de l'Staff")
 
 # 1. Season Selector in Sidebar
 seasons = get_available_seasons(RAW_DIR)
@@ -133,15 +128,15 @@ AGG_FILE = resolve_path_case_insensitive(RAW_DIR, selected_season, "aggregate", 
 if not AGG_FILE or not os.path.exists(AGG_FILE):
     AGG_FILE = resolve_path_case_insensitive(RAW_DIR, "aggregate", "aggregate_season_latest.xlsx")
 
-# 3. View selector (Sidebar)
+# 3. View selector (Sidebar) - canvi: Noms de navegació lateral simplificats i reestructurats
 view = st.sidebar.radio(
     "Visualitzacions", 
-    ["Partits", "Acumulats Lliga", "Scouting Jugadors", "Scouting Equips"]
+    ["Partits", "Acumulats Lliga", "Scouting Jugadors", "Scouting"]
 )
 
-# ----------------- VIEW 1: GAME ANALYZER -----------------
+# ----------------- VIEW 1: PARTITS -----------------
 if view == "Partits":
-    st.title(f"Partits ({selected_season.replace('_', ' ')})")
+    st.title(f"Analitzador de Partits ({selected_season.replace('_', ' ')})")
     
     if not BOX_DIR or not os.path.exists(BOX_DIR):
         st.info("No s'ha trobat la carpeta de boxscores. Comprova els noms de directori.")
@@ -189,8 +184,8 @@ if view == "Partits":
             estimated_game_mins = estimate_game_duration(t1_players, t2_players, pbp_df_param)
             
             # --- Subsection 1: Advanced Metrics (OER/DER/PACE) ---
-            # canvi: Capçaleres d'escuts mitjans normalitzats i protegits contra deformacions
             st.subheader("Ràtings d'Eficiència de l'Equip")
+            
             col_lgA, col_lgSpace, col_lgB = st.columns([4, 1, 4])
             with col_lgA:
                 logo_path_t1 = get_team_logo_path(t1_name, selected_season)
@@ -203,6 +198,7 @@ if view == "Partits":
                     
             col1, col2, col3, col4 = st.columns(4)
             
+            # Cerca de stats ofensives (definició restaurada per evitar errors de Pylance)
             t1_stats = team_summary.iloc[0]
             t2_stats = team_summary.iloc[1]
             
@@ -223,6 +219,13 @@ if view == "Partits":
             st.subheader("Comparació dels 4 Factors")
             factors = ["eFG%", "TOV%cal", "ORB%cal", "FTR"]
             
+            factor_ranges = {
+                "eFG%": [0.0, 80.0],      # eFG% de 0 a 80%
+                "TOV%cal": [0.0, 40.0],   # TO% de 0 a 40%
+                "ORB%cal": [0.0, 60.0],   # ORB% de 0 a 60%
+                "FTR": [0.0, 0.80]        # FTR de 0 a 0.80
+            }
+            
             col_f1, col_f2 = st.columns(2)
             for i, factor in enumerate(factors):
                 target_col = col_f1 if i % 2 == 0 else col_f2
@@ -241,7 +244,7 @@ if view == "Partits":
                         height=200,
                         margin=dict(l=20, r=20, t=40, b=20),
                         plot_bgcolor="rgba(0,0,0,0)",
-                        xaxis=dict(showgrid=False, range=[0.0, 80.0] if factor != "FTR" else [0.0, 0.80])
+                        xaxis=dict(showgrid=False, range=factor_ranges[factor])
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
@@ -286,7 +289,6 @@ if view == "Partits":
                         column_config=col_config
                     )
                 
-            # --- Subsection 4: PBP-Specific Tabs ---
             if has_pbp:
                 st.markdown("---")
                 st.subheader("Flux de Joc i Quintets")
@@ -310,12 +312,10 @@ if view == "Partits":
                     if selected_team != "Tots els equips":
                         pbp_df_filtered = pbp_df_filtered[pbp_df_filtered["Shot_Team"] == selected_team]
                         
-                    # canvi: Calculem el PPS mig de la lliga des de tots els tirs abans de dibuixar el gràfic de barres
                     pbp_cache_key = get_dir_cache_key(BOX_DIR)
                     raw_games_boxscores = load_all_raw_game_boxscores(BOX_DIR, PBP_DIR, pbp_cache_key)
                     league_pps_val = calculate_league_average_pps(raw_games_boxscores)
 
-                    # Renders side-by-side shot charts direct de la base de dades amb la línia dinàmica de lliga
                     fig_vol, fig_pps = draw_boxscore_zone_charts(
                         team_summary=team_summary,
                         t1_players=t1_players,
@@ -324,7 +324,7 @@ if view == "Partits":
                         t2_name=t2_name,
                         selected_team=selected_team,
                         selected_player=shot_player,
-                        league_pps=league_pps_val # <--- Enviem el PPS dinàmic de lliga calculat
+                        league_pps=league_pps_val
                     )
                     
                     col_map1, col_map2 = st.columns(2)
@@ -334,11 +334,10 @@ if view == "Partits":
                         st.plotly_chart(fig_pps, use_container_width=True)
                         
                     st.markdown("---")
-                    st.write("Registre de Jugades (Registre de Temps)")
+                    st.write("Quarter/Time Event Feed")
                     st.dataframe(pbp_df[["quarter", "time", "text"]].dropna().head(100), height=500, use_container_width=True)
                     
                 with lineup_tab:
-                    # Filtre d'equip obligatori per a la taula de quintets (lineups)
                     selected_lineup_team = st.selectbox("Filtra els quintets per equip", ["Tots els equips", t1_name, t2_name])
                     filtered_lineups = lineups_df.copy()
                     
@@ -351,7 +350,6 @@ if view == "Partits":
                         if team_col is not None:
                             filtered_lineups = filtered_lineups[filtered_lineups[team_col] == selected_lineup_team]
                     
-                    # Neteja de canvis i eliminació de dades redundants de quintets de la lliga
                     cols_to_drop = []
                     for col in filtered_lineups.columns:
                         col_lower = str(col).lower()
@@ -368,7 +366,6 @@ if view == "Partits":
                         if filtered_lineups[col].max() <= 1.0:
                             filtered_lineups[col] = filtered_lineups[col] * 100.0
                     
-                    # Mapeig dinàmic d'amplades i format de percentatge corregit per a quintets
                     lineup_col_config = {}
                     for col in filtered_lineups.columns:
                         col_str = str(col).strip()
@@ -388,12 +385,13 @@ if view == "Partits":
                     st.dataframe(
                         filtered_lineups, 
                         use_container_width=False,
-                        column_config=lineup_col_config
+                        column_config=lineup_col_config,
+                        hide_index=True
                     )
             else:
                 st.warning("No s'ha trobat cap fitxer Play-By-Play per a aquest partit. S'ha fet una cerca aproximada però no hi ha coincidències.")
 
-# ----------------- VIEW 2: LEAGUE & SEASON TRENDS -----------------
+# ----------------- VIEW 2: ACUMULATS LLIGA -----------------
 elif view == "Acumulats Lliga":
     st.title(f"Tendències de la Lliga ({selected_season.replace('_', ' ')})")
     
@@ -403,26 +401,42 @@ elif view == "Acumulats Lliga":
     if raw_games_df.empty:
         st.info("No s'han trobat dades de boxscores per calcular les tendències de la lliga.")
     else:
-        week_options = sorted(
-            list(raw_games_df["Week"].dropna().unique()), 
-            key=lambda w: [int(s) for s in re.findall(r'\d+', w)] or [w]
-        )
-        
-        # canvi: Integració de l'eina de diagnòstic de fitxers de lliga per a l' staff
         st.subheader("Filtre dinàmic de partits de la lliga")
         
-        # Cerca si hi ha partits sense jornada assignada (que han caigut al fallback d'Altres)
+        # Comptador de fitxers generals carregats
+        total_files = len(glob.glob(os.path.join(BOX_DIR, "*.xlsx"))) if BOX_DIR else 0
+        st.write(f"📂 **Estat dels fitxers:** S'han carregat **{len(raw_games_df) // 2} partits** d'un total de **{total_files} fitxers** d'excel de boxscores trobats.")
+
+        # Desplegable d'avisos per a partits que han caigut al fallback d'Altres
         missing_week_games = raw_games_df[raw_games_df["Week"] == "Altres / Sense Jornada"]
         if not missing_week_games.empty:
-            with st.expander("⚠️ Avisos de fitxers (Alguns partits de la carpeta no tenen la Jornada assignada)"):
-                st.write("Els següents partits no han trobat el seu fitxer Play-By-Play corresponent o no s'ha pogut extreure la jornada del seu excel, pel que s'han assignat a 'Altres / Sense Jornada':")
+            st.warning("⚠️ S'han trobat partits que no s'han pogut assignar a cap jornada. Revisa el desplegable inferior d'avisos.")
+            with st.expander("Avisos de fitxers (Alguns partits de la carpeta no tenen la Jornada assignada)"):
+                st.write("Els següents partits no han trobat el seu fitxer Play-By-Play corresponent o no s'ha pogut extreure la jornada de la columna 'Week', pel que s'han assignat a 'Altres / Sense Jornada':")
                 st.dataframe(
                     missing_week_games[["Game_Name", "Game_File"]].drop_duplicates(), 
                     use_container_width=True, 
                     hide_index=True
                 )
-        
+                
+        # Taula interactiva de distribució de partits de lliga
+        with st.expander("📊 Veure la distribució real de partits per Jornada de la teva lliga"):
+            week_counts = raw_games_df["Week"].value_counts().reset_index()
+            week_counts.columns = ["Jornada de fons", "Partits totals de lliga (Ambdós equips)"]
+            
+            # Ordenació numèrica de les files
+            week_counts = week_counts.sort_values(
+                "Jornada de fons", 
+                key=lambda x: x.apply(lambda w: [int(s) for s in re.findall(r'\d+', str(w))] or [str(w)])
+            )
+            st.dataframe(week_counts, use_container_width=False, hide_index=True)
+            
         select_all_weeks = st.checkbox("Inclou Totes les Jornades de la temporada", value=True)
+        
+        week_options = sorted(
+            list(raw_games_df["Week"].dropna().unique()), 
+            key=lambda w: [int(s) for s in re.findall(r'\d+', w)] or [w]
+        )
         
         if select_all_weeks:
             selected_weeks = week_options
@@ -471,7 +485,6 @@ elif view == "Acumulats Lliga":
             raw_defense_df = pd.DataFrame(all_def_rows)
             filtered_raw_def = raw_defense_df[raw_defense_df["Week"].isin(selected_weeks)].copy()
             
-            # Columnes d'acumulat per promediar
             agg_cols = [
                 "POSScal", "OERcal", "DERcal", "eFG%", "TOV%cal", "ORB%cal", "FTR",
                 "Rim FGM", "Rim FGA", "Paint FGM", "Paint FGA", "MR FGM", "MR FGA", "Cor3 FGM", "Cor3 FGA", "ATB3 FGM", "ATB3 FGA"
@@ -482,11 +495,9 @@ elif view == "Acumulats Lliga":
                 if c in filtered_raw_def.columns:
                     filtered_raw_def[c] = pd.to_numeric(filtered_raw_def[c], errors="coerce").fillna(0.0)
             
-            # Càlcul dinàmic d'atac i defensa en temps real
             offense_df = filtered_raw_off.groupby("Team").agg({c: "mean" for c in agg_cols if c in filtered_raw_off.columns}).reset_index()
             defense_df = filtered_raw_def.groupby("Team").agg({c: "mean" for c in agg_cols if c in filtered_raw_def.columns}).reset_index()
             
-            # Recalcul de percentatges de llançament per a cadascuna de les taules d'atac i defensa
             for df_t in [offense_df, defense_df]:
                 for zone in ["Rim", "Paint", "MR", "Cor3", "ATB3"]:
                     fgm_c = f"{zone} FGM"
@@ -495,7 +506,6 @@ elif view == "Acumulats Lliga":
                     if fgm_c in df_t.columns and fga_c in df_t.columns:
                         df_t[pct_c] = (df_t[fgm_c] / df_t[fga_c] * 100.0).fillna(0.0)
 
-            # Càrrega d'escuts en miniatura Base64 dinàmics per a les cel·les
             offense_df["Escut"] = offense_df["Team"].apply(lambda t: get_team_logo_base64_url(t, selected_season))
             defense_df["Escut"] = defense_df["Team"].apply(lambda t: get_team_logo_base64_url(t, selected_season))
             
@@ -510,16 +520,15 @@ elif view == "Acumulats Lliga":
                 if col not in ["Team", "Escut"]:
                     league_col_config[col] = st.column_config.NumberColumn(col, width=65)
 
-            # canvi: Únic bloc de pestanyes net unificat al capdamunt per evitar solapaments temporals de lliga
             tab_off, tab_def, tab_chart, tab_team_profile = st.tabs([
-                "Dades Equip", 
-                    "Dades Rival", 
-                    "Gràfic de Dispersió",
-                    "Perfil de Tir"
+                "Dades Equips", 
+                "Dades Rivals", 
+                "Gràfic de Dispersió",
+                "Perfil de Tir de l'Equip"
             ])
             
             with tab_off:
-                st.write("Classificació d'Eficiència de la Lliga (Mètriques Ofensives recalculades en viu)")
+                st.write("Mètriques Ofensives dels Equips recalculades en viu (Dades Equips)")
                 st.dataframe(
                     offense_df[view_off_cols].sort_values("OERcal", ascending=False).style.format(precision=2), 
                     use_container_width=False, 
@@ -528,7 +537,7 @@ elif view == "Acumulats Lliga":
                 )
                 
             with tab_def:
-                st.write("Classificació d'Eficiència de la Lliga (Mètriques Defensives recalculades en viu)")
+                st.write("Mètriques Defensives dels Rivals recalculades en viu (Dades Rivals)")
                 st.dataframe(
                     defense_df[view_def_cols].sort_values("DERcal", ascending=True).style.format(precision=2), 
                     use_container_width=False, 
@@ -617,37 +626,37 @@ elif view == "Acumulats Lliga":
                 st.plotly_chart(fig_scat, use_container_width=True)
                 
             with tab_team_profile:
-                    scout_teams = sorted(list(offense_df["Team"].unique()))
-                    selected_profile_team = st.selectbox("Selecciona l'Equip per analitzar el seu Perfil de Tir", scout_teams)
+                scout_teams = sorted(list(offense_df["Team"].unique()))
+                selected_profile_team = st.selectbox("Selecciona l'Equip per analitzar el seu Perfil de Tir", scout_teams)
+                
+                league_pps_val = calculate_league_average_pps(filtered_raw_off)
+                
+                # --- SECCIÓ 1: PERFIL OFENSIU (ATAC) ---
+                st.subheader("📊 Perfil de Tir Ofensiu (Atac)")
+                fig_vol_seasonal, fig_pps_seasonal = draw_team_seasonal_zone_charts(offense_df, selected_profile_team, league_pps_val)
+                
+                col_prof1, col_prof2 = st.columns(2)
+                with col_prof1:
+                    st.plotly_chart(fig_vol_seasonal, use_container_width=True)
+                with col_prof2:
+                    st.plotly_chart(fig_pps_seasonal, use_container_width=True)
                     
-                    league_pps_val = calculate_league_average_pps(filtered_raw_off)
-                    
-                    # --- SECCIÓ 1: PERFIL OFENSIU (ATAC) ---
-                    st.subheader("📊 Perfil de Tir Ofensiu (Atac)")
-                    fig_vol_seasonal, fig_pps_seasonal = draw_team_seasonal_zone_charts(offense_df, selected_profile_team, league_pps_val)
-                    
-                    col_prof1, col_prof2 = st.columns(2)
-                    with col_prof1:
-                        st.plotly_chart(fig_vol_seasonal, use_container_width=True)
-                    with col_prof2:
-                        st.plotly_chart(fig_pps_seasonal, use_container_width=True)
-                        
-                    # canvi: Afegida la Secció 2 de Perfil Defensiu (Rivals contra ells) usant defense_df de fons
-                    st.markdown("---")
-                    st.subheader("📊 Perfil de Tir Defensiu (Defensa - Permès als Rivals)")
-                    st.write("Estudia quins llançaments concedeix aquest equip: els gràfics següents mostren el volum i l'eficiència (PPS) de tir dels rivals quan juguen contra ells.")
-                    
-                    fig_vol_def, fig_pps_def = draw_team_seasonal_zone_charts(defense_df, selected_profile_team, league_pps_val)
-                    
-                    col_def1, col_def2 = st.columns(2)
-                    with col_def1:
-                        # Personalitzem els títols dels gràfics per a la defensa de fons
-                        fig_vol_def.update_layout(title=f"Volum de Tirs Concedits de Mitjana - {selected_profile_team}")
-                        st.plotly_chart(fig_vol_def, use_container_width=True)
-                    with col_def2:
-                        fig_pps_def.update_layout(title=f"Eficiència de Tir Concedida (PPS) - {selected_profile_team}")
-                        st.plotly_chart(fig_pps_def, use_container_width=True)
-# ----------------- VIEW 3: PLAYER SHOOTING INDEX -----------------
+                # --- SECCIÓ 2: PERFIL DEFENSIU (RIVALS) ---
+                st.markdown("---")
+                st.subheader("📊 Perfil de Tir Defensiu (Defensa - Permès als Rivals)")
+                st.write("Estudia quins llançaments concedeix aquest equip: els gràfics següents mostren el volum i l'eficiència (PPS) de tir dels rivals quan juguen contra ells.")
+                
+                fig_vol_def, fig_pps_def = draw_team_seasonal_zone_charts(defense_df, selected_profile_team, league_pps_val)
+                
+                col_def1, col_def2 = st.columns(2)
+                with col_def1:
+                    fig_vol_def.update_layout(title=f"Volum de Tirs Concedits de Mitjana - {selected_profile_team}")
+                    st.plotly_chart(fig_vol_def, use_container_width=True)
+                with col_def2:
+                    fig_pps_def.update_layout(title=f"Eficiència de Tir Concedida (PPS) - {selected_profile_team}")
+                    st.plotly_chart(fig_pps_def, use_container_width=True)
+
+# ----------------- VIEW 3: SCOUTING JUGADORS -----------------
 elif view == "Scouting Jugadors":
     st.title(f"Índex de Tir dels Jugadors ({selected_season.replace('_', ' ')})")
     
@@ -671,7 +680,7 @@ elif view == "Scouting Jugadors":
         
         st.write("Motor de cerca acumulats dels jugadors de la temporada. Els percentatges indiquen l'**Eficiència de Tir**, mentre que el **FGA** indica el volum total d'intents.")
         
-        # canvi: Afegit filtre d'Equip obligatori per a la llista d'índex de tir
+        # Leaderboard Filters
         st.subheader("Filtres de la Taula")
         col_t1, col_t2 = st.columns(2)
         with col_t1:
@@ -750,17 +759,16 @@ elif view == "Scouting Jugadors":
                 column_config=player_index_config
             )
             
-            # canvi: MÒDUL DE DOBLE RÀDAR EN PARAL·LEL (VOLUM VS EFICIÈNCIA AMB INTEGRACIÓ DE MOSTRES)
             st.markdown("---")
-            st.subheader("📊 Ràdars de Tir Comparatius del Jugador")
-            st.write("Analitza el perfil del jugador: el gràfic de l'esquerra mostra on llança (Volum) i el de la dreta mostra quant encerta (Eficiència), especificant el número total de tirs fets als eixos.")
+            st.subheader("📊 Gràfic de Ràdar de Tir de Jugador")
+            st.write("Selecciona qualsevol jugador de la llista filtrada de dalt per comparar-ne l'eficiència per zones contra la mitjana global de la lliga.")
             
             players_radar_list = sorted(list(filtered_players["JUGADOR"].unique()))
             selected_radar_player = st.selectbox("Selecciona un jugador per veure el seu ràdar de tir", players_radar_list)
             
             player_row = filtered_players[filtered_players["JUGADOR"] == selected_radar_player].iloc[0]
             
-            # Càlcul de mètriques de la lliga (mitjana d'intents i de percentatges sobre llançadors reals)
+            # Càlcul de mètriques de la lliga
             league_averages = {
                 "Rim_FGA": master_players["Rim FGA"].mean() or 0.0,
                 "Paint_FGA": master_players["Paint FGA"].mean() or 0.0,
@@ -791,7 +799,7 @@ elif view == "Scouting Jugadors":
                 st.plotly_chart(fig_vol_rad, use_container_width=True)
             with col_map2:
                 st.plotly_chart(fig_eff_rad, use_container_width=True)
-            # canvi: Nova taula resum compacta en píxels sota els ràdars comparant Tirs, PPS i vs. Lliga en viu
+                
             zones_list = ["Rim", "Paint", "MR", "Cor3", "ATB3"]
             zone_names_cat = {
                 "Rim": "A prop del cercle (Rim)",
@@ -800,24 +808,22 @@ elif view == "Scouting Jugadors":
                 "Cor3": "Triple cantonada (Corner 3)",
                 "ATB3": "Triple frontal (ATB3)"
             }
-             # canvi: Definim games_played directament a app.py per resoldre la referència de Pylance
+            
             games_played = max(1.0, float(player_row.get("GamesPlayed", 1.0)))
+            
             table_rows = []
             for zone in zones_list:
                 is_3pt = zone in ["Cor3", "ATB3"]
                 multiplier = 3.0 if is_3pt else 2.0
                 
-                # Càlculs de dades del jugador
                 fga = float(player_row.get(f"{zone} FGA", 0.0))
                 pct = float(player_row.get(f"{zone} %", 0.0))
                 total_shots = int(round(fga * games_played))
                 player_pps = multiplier * (pct / 100.0)
                 
-                # Càlculs de dades de la mitjana de lliga
                 league_pct = float(league_averages.get(f"{zone}_Pct", 0.0))
                 league_pps = multiplier * (league_pct / 100.0)
                 
-                # Diferència net de rendiment (PPS)
                 diff_pps = player_pps - league_pps
                 
                 table_rows.append({
@@ -829,7 +835,6 @@ elif view == "Scouting Jugadors":
                 
             radar_table_df = pd.DataFrame(table_rows)
             
-            # Disseny compacte unificat de píxels
             radar_table_config = {
                 "Zona": st.column_config.TextColumn("Zona", width=240),
                 "Tirs Totals": st.column_config.NumberColumn("Tirs Totals", width="small"),
@@ -845,9 +850,9 @@ elif view == "Scouting Jugadors":
                 hide_index=True
             )
 
-# ----------------- VIEW 4: SCOUTING DE RIVALS -----------------
-elif view == "Scouting Equips":
-    st.title(f"Scouting ({selected_season.replace('_', ' ')})")
+# ----------------- VIEW 4: SCOUTING -----------------
+elif view == "Scouting":
+    st.title(f"Mòdul de Scouting de Rivals ({selected_season.replace('_', ' ')})")
     
     if not AGG_FILE or not os.path.exists(AGG_FILE):
         st.info("No s'ha trobat el fitxer d'acumulats de lliga. Afegeix 'aggregate_season_latest.xlsx' a la seva carpeta.")
@@ -862,9 +867,8 @@ elif view == "Scouting Equips":
             team_B = st.selectbox("Selecciona l'Equip B", teams_list, index=min(1, len(teams_list)-1))
             
         if team_A == team_B:
-            st.warning("Selecciona dos equips diferents per poder fer la comparativa de scouting.")
+            st.warning("Selecciona dos equips diferents per poder faire la comparativa de scouting.")
         else:
-            # canvi: Capçalera de Scouting cara a cara normalitzada a 100px d'alçada per evitar logos gegants
             col_logo_A, col_vs, col_logo_B = st.columns([1, 0.5, 1])
             with col_logo_A:
                 logo_path_A = get_team_logo_path(team_A, selected_season)
@@ -880,14 +884,13 @@ elif view == "Scouting Equips":
                     st.markdown(get_logo_html_centered(logo_path_B, max_height=100, max_width=140), unsafe_allow_html=True)
                 else:
                     st.subheader(team_B)
+                    
             st.markdown("---")
             st.subheader("Comparativa de Rànquings i Eficiència de l'Equip")
             
             off_ranks = offense_df.copy()
             def_ranks = defense_df.copy()
             
-            # OER, eFG%, ORB%, FTR, POSScal rànquing alt és millor (descending)
-            # DER, TOV% cal rànquing baix és millor (ascending)
             off_ranks["OER_Rank"] = off_ranks["OERcal"].rank(ascending=False, method="min")
             off_ranks["eFG_Rank"] = off_ranks["eFG%"].rank(ascending=False, method="min")
             off_ranks["ORB_Rank"] = off_ranks["ORB%cal"].rank(ascending=False, method="min")
@@ -955,7 +958,6 @@ elif view == "Scouting Equips":
                     f"Rànquing ({team_B})": str_B
                 })
                 
-            # canvi: Convertit a st.dataframe compacte amb amplades fixes i index ocult
             mirror_df = pd.DataFrame(mirror_data)
             mirror_col_config = {
                 f"Rànquing ({team_A})": st.column_config.TextColumn(f"Rànquing ({team_A})", width=220),
@@ -1030,12 +1032,11 @@ elif view == "Scouting Equips":
                     use_container_width=False, 
                     column_config=scout_col_config
                 )
-                # canvi: Mòdul de Quintets i Parelles mogut dinàmicament a Scouting Equips cara a cara
+                
             st.markdown("---")
             st.subheader("Anàlisi Avançat de Quintets i Parelles de Rivals")
             st.write("Estudia les rotacions de l'equip rival: el següent selector et permet obrir l'històric de quintets o calcular la coincidència a pista de qualsevol de les dues plantilles cara a cara.")
             
-            # Selector dinàmic per escollir quin rival analitzar (Equip A o Equip B)
             selected_scout_lineup_team = st.radio("Analitza els quintets i parelles de:", [team_A, team_B], horizontal=True)
             
             pbp_cache_key = get_dir_cache_key(PBP_DIR)
@@ -1044,7 +1045,6 @@ elif view == "Scouting Equips":
             if agg_lineups.empty:
                 st.info(f"No s'han trobat dades de quintets per a {selected_scout_lineup_team} en els fitxers Play-by-Play d'aquesta temporada.")
             else:
-                # 1. Taula de quintets compacta en píxels
                 lineup_cols = [
                     "P1", "P2", "P3", "P4", "P5", "Lineup", "PTS_For", "PTS_Agn", "+/-", 
                     "RO_For", "RD_For", "RO_Agn", "RD_Agn",
@@ -1074,7 +1074,6 @@ elif view == "Scouting Equips":
                     hide_index=True
                 )
                 
-                # 2. Analitzador de parelles On/Off i rànquings del rival seleccionat
                 st.markdown("---")
                 st.subheader(f"Anàlisi de Parelles i Coincidència de {selected_scout_lineup_team}")
                 
@@ -1117,12 +1116,13 @@ elif view == "Scouting Equips":
                     for teammate in roster_list:
                         if teammate == player_X:
                             continue
+                        
                         both_on_raw = combined_df[
                             combined_df["Lineup"].str.contains(player_X, na=False) & 
                             combined_df["Lineup"].str.contains(teammate, na=False)
                         ]
+                        
                         if not both_on_raw.empty:
-                            # Càlcul de mètriques avançades de dades de la parella
                             o_efg, d_efg, to_p, to_pa, ro, ro_ag, rd, rd_ag = calculate_combo_stats_metrics(both_on_raw)
                             
                             if "Week" in both_on_raw.columns and "Rival" in both_on_raw.columns:
@@ -1186,7 +1186,6 @@ elif view == "Scouting Equips":
                                 column_config=t_config
                             )
                 else:
-                    # --- MODE 2: ANALISI CREUAT COMPLET (DOS JUGADORS) ---
                     both_on = combined_df[combined_df["Lineup"].str.contains(player_X, na=False) & combined_df["Lineup"].str.contains(player_Y, na=False)]
                     only_X = combined_df[combined_df["Lineup"].str.contains(player_X, na=False) & ~combined_df["Lineup"].str.contains(player_Y, na=False)]
                     only_Y = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False) & combined_df["Lineup"].str.contains(player_Y, na=False)]
