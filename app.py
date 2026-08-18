@@ -38,7 +38,7 @@ def check_password():
         st.session_state.authenticated = False
     
     if not st.session_state.authenticated:
-        st.title("🔒 Accés per a l'Staff")
+        st.title("🔒 Dashboard Copa Catalunay. Accés Staff")
         correct_password = st.secrets.get("auth", {}).get("password", None)
         
         if not correct_password:
