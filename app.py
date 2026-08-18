@@ -1025,20 +1025,21 @@ elif view == "Scouting Equips":
                     "Fortalesa (B)": strength_B
                 })
                 
-            # canvi: Generació de la taula compacta en mirall amb fons de 5 columnes (Fase 3 de Scouting)
+            # canvi: Nova taula en mirall de 5 columnes amb barres de progrés ampliades (mida medium) i alçada de 480px per evitar scrollbars
             mirror_df = pd.DataFrame(mirror_data)
             mirror_col_config = {
-                "Fortalesa (A)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="small"),
+                "Fortalesa (A)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="medium"),
                 f"Rànquing ({team_A})": st.column_config.TextColumn(f"Rànquing ({team_A})", width=140),
-                "Mètrica de Lliga": st.column_config.TextColumn("Mètrica de Lliga", width=220),
+                "Mètrica de Lliga": st.column_config.TextColumn("Mètrica de Lliga", width=260),
                 f"Rànquing ({team_B})": st.column_config.TextColumn(f"Rànquing ({team_B})", width=140),
-                "Fortalesa (B)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="small")
+                "Fortalesa (B)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="medium")
             }
             st.dataframe(
                 mirror_df,
                 use_container_width=False,
                 column_config=mirror_col_config,
-                hide_index=True
+                hide_index=True,
+                height=480 # canvi: Alçada forçada a 480px per mostrar les 11 files netes sense barra de desplaçament vertical
             )
             
             st.markdown("---")
