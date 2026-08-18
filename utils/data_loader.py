@@ -307,7 +307,7 @@ def normalize_and_format_player_times(players_df, target_minutes):
 def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
     """
     Finds PBP files via multiple matching fallbacks:
-    0. Exact/Case-insensitive filename match (by stripping 'boxscore_' and 'pbp_')
+    0. Exact/Case/Unicode independent filename match (by stripping spaces, accents, and extensions)
     1. Team Name Overlaps (stripping accents and common terms)
     2. Date/ID matching based on filename numbers
     3. Flat file directories fallback (if only 1 file exists)
@@ -319,14 +319,27 @@ def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
     if not pbp_files:
         return None
         
-    # Attempt 0: Exact filename check (case-insensitive and prefix independent)
-    box_clean_base = boxscore_filename.lower().replace("boxscore_", "").replace("pbp_", "").strip()
+    # Helper programàtic per normalitzar codificació, treure accents, espais, guions i extensions
+    def clean_filename(fname):
+        s = str(fname).lower().strip()
+        # 1. Normalitzem unicode a NFC per assegurar compatibilitat multiplataforma (Win/Mac)
+        s = unicodedata.normalize("NFC", s)
+        # 2. Eliminem els prefixos i sufixos habituals de fons
+        s = s.replace("boxscore_", "").replace("pbp_", "").replace("_analysis", "").replace(".xlsx", "").replace(".xls", "")
+        # 3. Eliminem tots els accents de fons (ex: "sarrià" -> "sarria")
+        s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+        # 4. Eliminem espais, guions baixos i guions de text
+        s = re.sub(r'[\s_\-]', '', s)
+        return s
+        
+    box_clean = clean_filename(boxscore_filename)
+    
+    # Attempt 0: Coincidència de nom exacte de fitxer blindat contra accents de disc (Lliga d' Atac i Defensa)
     for pf in pbp_files:
-        pf_clean_base = pf.lower().replace("boxscore_", "").replace("pbp_", "").strip()
-        if pf_clean_base == box_clean_base:
+        if clean_filename(pf) == box_clean:
             return os.path.join(pbp_dir, pf)
             
-    # Helper to strip accents from strings (e.g. "sarrià" -> "sarria")
+    # Helper de text de suport per treure accents de paraules individuals
     def strip_accents(s):
         return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
         
@@ -337,7 +350,6 @@ def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
         t1_words.discard(common)
         t2_words.discard(common)
         
-    # Strip accents for 100% robust cross-platform matching
     t1_words = set(strip_accents(w) for w in t1_words)
     t2_words = set(strip_accents(w) for w in t2_words)
     
@@ -360,7 +372,6 @@ def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
     if best_file:
         return os.path.join(pbp_dir, best_file)
         
-    # Attempt 2: Match by date/numbers inside the filename (Fallback)
     box_numbers = re.findall(r'\d+', boxscore_filename)
     if box_numbers:
         longest_num = max(box_numbers, key=len)
@@ -369,7 +380,6 @@ def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
                 if longest_num in pf:
                     return os.path.join(pbp_dir, pf)
                     
-    # Attempt 3: If only one PBP file exists, default to it
     if len(pbp_files) == 1:
         return os.path.join(pbp_dir, pbp_files[0])
         
