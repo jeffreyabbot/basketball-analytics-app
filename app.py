@@ -713,7 +713,7 @@ elif view == "Scouting Jugadors":
         st.write("Motor de cerca acumulats dels jugadors de la temporada. Els percentatges indiquen l'**Eficiència de Tir**, mentre que el **FGA** indica el volum total d'intents.")
         
         # Leaderboard Filters
-        st.subheader("Filtres de la Taula")
+        st.subheader("Filtres")
         col_t1, col_t2 = st.columns(2)
         with col_t1:
             player_teams = ["Tots els equips"] + sorted(list(master_players["Team"].dropna().unique()))
@@ -792,7 +792,7 @@ elif view == "Scouting Jugadors":
             )
             
             st.markdown("---")
-            st.subheader("📊 Gràfic de Ràdar de Tir de Jugador")
+            st.subheader("📊 Radars de Tir")
             st.write("Selecciona qualsevol jugador de la llista filtrada de dalt per comparar-ne l'eficiència per zones contra la mitjana global de la lliga.")
             
             players_radar_list = sorted(list(filtered_players["JUGADOR"].unique()))
@@ -1004,7 +1004,7 @@ elif view == "Scouting":
             )
             
             st.markdown("---")
-            st.subheader("Anàlisi Comparatiu de Jugadors (Volum i PPS per Trams)")
+            st.subheader("Anàlisi Comparatiu per Jugador (Volum i PPS per Trams)")
             
             def calculate_player_splits_scout(team_name):
                 df_players = master_players[master_players["Team"] == team_name].copy()
@@ -1066,7 +1066,7 @@ elif view == "Scouting":
                 )
                 
             st.markdown("---")
-            st.subheader("Anàlisi Avançat de Quintets i Parelles de Rivals")
+            st.subheader("Anàlisi Avançat de Quintets i Parelles")
             st.write("Estudia les rotacions de l'equip rival: el següent selector et permet obrir l'històric de quintets o calcular la coincidència a pista de qualsevol de les dues plantilles cara a cara.")
             
             selected_scout_lineup_team = st.radio("Analitza els quintets i parelles de:", [team_A, team_B], horizontal=True)
