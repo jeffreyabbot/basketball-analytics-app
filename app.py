@@ -182,7 +182,7 @@ st.sidebar.markdown(
 )
 
 # ----------------- VIEW 1: PARTITS -----------------
-if view == "Partits":
+if view == "AnàlisiPartits":
     st.title(f"Analitzador de Partits ({selected_season.replace('_', ' ')})")
     
     if not BOX_DIR or not os.path.exists(BOX_DIR):
