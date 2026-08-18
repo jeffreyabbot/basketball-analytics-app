@@ -103,7 +103,7 @@ CB_BLUE = "#1f77b4"
 CB_ORANGE = "#ff7f0e"
 CB_NEUTRAL = "#4a4a4a"
 
-st.sidebar.title("🏀 Hub de l'Staff")
+st.sidebar.title("Dashboard Copa Catalunya")
 
 # 1. Season Selector in Sidebar
 seasons = get_available_seasons(RAW_DIR)
