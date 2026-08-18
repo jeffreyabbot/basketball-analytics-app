@@ -573,3 +573,116 @@ def get_team_logo_base64_url(team_name, selected_season):
         return f"data:image/{ext};base64,{encoded}"
     except Exception:
         return None
+    # Afegeix-ho a baix de tot de /utils/data_loader.py:
+def calculate_combo_stats_metrics(df):
+    """
+    Calculates advanced statistics (eFG%, TO%, RO, RD) on an aggregated lineup subset
+    using the exact zone-level columns from the excel sheet.
+    """
+    if df.empty:
+        return 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0
+        
+    # Classificació dinàmica d'un sol pas
+    ro = 0
+    rd = 0
+    ro_ag = 0
+    rd_ag = 0
+    
+    tov_for = 0.0
+    fta_for = 0.0
+    tov_agn = 0.0
+    fta_agn = 0.0
+    
+    for col in df.columns:
+        col_lower = col.lower()
+        col_sum = df[col].sum()
+        
+        # Pèrdues
+        if "tov" in col_lower:
+            if "for" in col_lower:
+                tov_for += col_sum
+            elif "agn" in col_lower or "ag" in col_lower:
+                tov_agn += col_sum
+                
+        # Tirs lliures
+        elif "fta" in col_lower:
+            if "for" in col_lower:
+                fta_for += col_sum
+            elif "agn" in col_lower or "ag" in col_lower:
+                fta_agn += col_sum
+                
+        # Rebot Ofensiu (RO)
+        elif any(p in col_lower for p in ["oreb", "orb", "ro_"]):
+            is_off_reb = any(p in col_lower for p in ["oreb", "orb"]) or col_lower.startswith("ro") or "ro_for" in col_lower or "ro_agn" in col_lower or "ro_ag" in col_lower
+            if is_off_reb:
+                if "for" in col_lower:
+                    ro += int(col_sum)
+                elif "agn" in col_lower or "ag" in col_lower:
+                    ro_ag += int(col_sum)
+                    
+        # Rebot Defensiu (RD)
+        elif any(p in col_lower for p in ["dreb", "drb", "rd_"]):
+            is_def_reb = any(p in col_lower for p in ["dreb", "drb"]) or col_lower.startswith("rd") or "rd_for" in col_lower or "rd_agn" in col_lower or "rd_ag" in col_lower
+            if is_def_reb:
+                if "for" in col_lower:
+                    rd += int(col_sum)
+                elif "agn" in col_lower or "ag" in col_lower:
+                    rd_ag += int(col_sum)
+
+    # Recompte de zones de tir
+    def sum_cols_matching(patterns):
+        total = 0.0
+        for col in df.columns:
+            col_lower = col.lower()
+            if all(p in col_lower for p in patterns):
+                total += df[col].sum()
+        return total
+
+    rim_fga_for = sum_cols_matching(["rim", "fga", "for"])
+    rim_fgm_for = sum_cols_matching(["rim", "fgm", "for"])
+    paint_fga_for = sum_cols_matching(["paint", "fga", "for"])
+    paint_fgm_for = sum_cols_matching(["paint", "fgm", "for"])
+    mr_fga_for = sum_cols_matching(["mr", "fga", "for"])
+    mr_fgm_for = sum_cols_matching(["mr", "fgm", "for"])
+    cor_fga_for = sum_cols_matching(["cor", "fga", "for"])
+    cor_fgm_for = sum_cols_matching(["cor", "fgm", "for"])
+    atb_fga_for = sum_cols_matching(["atb", "fga", "for"])
+    atb_fgm_for = sum_cols_matching(["atb", "fgm", "for"])
+    
+    rim_fga_agn = sum_cols_matching(["rim", "fga", "ag"])
+    rim_fgm_agn = sum_cols_matching(["rim", "fgm", "ag"])
+    paint_fga_agn = sum_cols_matching(["paint", "fga", "ag"])
+    paint_fgm_agn = sum_cols_matching(["paint", "fgm", "ag"])
+    mr_fga_agn = sum_cols_matching(["mr", "fga", "ag"])
+    mr_fgm_agn = sum_cols_matching(["mr", "fgm", "ag"])
+    cor_fga_agn = sum_cols_matching(["cor", "fga", "ag"])
+    cor_fgm_agn = sum_cols_matching(["cor", "fgm", "ag"])
+    atb_fga_agn = sum_cols_matching(["atb", "fga", "ag"])
+    atb_fgm_agn = sum_cols_matching(["atb", "fgm", "ag"])
+    
+    fga_2p_for = rim_fga_for + paint_fga_for + mr_fga_for
+    fgm_2p_for = rim_fgm_for + paint_fgm_for + mr_fgm_for
+    fga_3p_for = cor_fga_for + atb_fga_for
+    fgm_3p_for = cor_fgm_for + atb_fgm_for
+    
+    fga_for = fga_2p_for + fga_3p_for
+    fgm_for_weighted = fgm_2p_for + 1.5 * fgm_3p_for
+    
+    fga_2p_agn = rim_fga_agn + paint_fga_agn + mr_fga_agn
+    fgm_2p_agn = rim_fgm_agn + paint_fgm_agn + mr_fgm_agn
+    fga_3p_agn = cor_fga_agn + atb_fga_agn
+    fgm_3p_agn = cor_fgm_agn + atb_fgm_agn
+    
+    fga_agn = fga_2p_agn + fga_3p_agn
+    fgm_agn_weighted = fgm_2p_agn + 1.5 * fgm_3p_agn
+    
+    off_efg = (fgm_for_weighted / fga_for * 100.0) if fga_for > 0 else 0.0
+    def_efg = (fgm_agn_weighted / fga_agn * 100.0) if fga_agn > 0 else 0.0
+    
+    poss_for = fga_for + 0.44 * fta_for + tov_for
+    to_pct = (tov_for / poss_for * 100.0) if poss_for > 0 else 0.0
+    
+    poss_agn = fga_agn + 0.44 * fta_agn + tov_agn
+    to_pct_ag = (tov_agn / poss_agn * 100.0) if poss_agn > 0 else 0.0
+    
+    return off_efg, def_efg, to_pct, to_pct_ag, ro, ro_ag, rd, rd_ag
