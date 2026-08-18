@@ -246,3 +246,80 @@ def draw_player_radar_charts(player_row, league_averages, league_max_fga):
     )
     
     return fig_vol, fig_eff
+# Afegeix-ho a baix de tot de /utils/court_visualizer.py:
+def draw_team_seasonal_zone_charts(offense_df, selected_team, league_pps=0.95):
+    """
+    Renders two side-by-side analytical horizontal bar charts of the 5 FIBA zones
+    for a team's seasonal averages (Offensive Volume & Efficiency).
+    """
+    standard_zones = ["Rim", "Paint", "MR", "Cor3", "ATB3"]
+    cat_labels = {
+        "Rim": "A prop del cercle (Rim)",
+        "Paint": "Pintura (Paint)",
+        "MR": "Mitjana distància (MR)",
+        "Cor3": "Triple cantonada (Corner 3)",
+        "ATB3": "Triple frontal (ATB3)"
+    }
+    
+    attempts = []
+    pps_vals = []
+    labels_display = [cat_labels[z] for z in standard_zones]
+    
+    # Busquem la fila de l'equip en les dades acumulades de lliga
+    team_rows = offense_df[offense_df["Team"] == selected_team]
+    if team_rows.empty:
+        attempts = [0] * 5
+        pps_vals = [0.0] * 5
+    else:
+        team_row = team_rows.iloc[0]
+        for zone in standard_zones:
+            # Extraguem la mitjana de llançaments intentats i encertats per partit
+            fga = float(team_row.get(f"{zone} FGA", 0.0))
+            fgm = float(team_row.get(f"{zone} FGM", 0.0))
+            
+            attempts.append(fga)
+            is_3pt = zone in ["Cor3", "ATB3"]
+            points = (3.0 * fgm) if is_3pt else (2.0 * fgm)
+            pps = (points / fga) if fga > 0 else 0.0
+            pps_vals.append(pps)
+            
+    # 1. Volume Chart
+    fig_vol = go.Figure()
+    fig_vol.add_trace(go.Bar(
+        y=labels_display,
+        x=attempts,
+        orientation='h',
+        marker=dict(color=attempts, colorscale="Viridis", showscale=False),
+        text=[f"{val:.1f} tirs/p" for val in attempts],
+        textposition='inside' if max(attempts or [0]) > 0 else 'outside'
+    ))
+    fig_vol.update_layout(
+        title=f"Volum d'Intents Mig per Partit - {selected_team}",
+        xaxis=dict(title="Número de tirs mig (FGA)", showgrid=True),
+        yaxis=dict(autorange="reversed"),
+        height=380,
+        margin=dict(l=20, r=20, t=40, b=20),
+        plot_bgcolor="rgba(0,0,0,0)"
+    )
+    
+    # 2. PPS Chart
+    fig_pps = go.Figure()
+    fig_pps.add_trace(go.Bar(
+        y=labels_display,
+        x=pps_vals,
+        orientation='h',
+        marker=dict(color=pps_vals, colorscale="Cividis", showscale=False),
+        text=[f"{val:.2f} PPS" for val in pps_vals],
+        textposition='inside' if max(pps_vals or [0.0]) > 0 else 'outside'
+    ))
+    fig_pps.add_vline(x=league_pps, line_dash="dash", line_color="orange", annotation_text=f"Mitjana de la Lliga ({league_pps:.2f} PPS)", annotation_position="top right")
+    fig_pps.update_layout(
+        title=f"Eficiència de Tir Miga (PPS) - {selected_team}",
+        xaxis=dict(title="Punts per llançament (PPS)", showgrid=True, range=[0.0, 3.0]),
+        yaxis=dict(autorange="reversed"),
+        height=380,
+        margin=dict(l=20, r=20, t=40, b=20),
+        plot_bgcolor="rgba(0,0,0,0)"
+    )
+    
+    return fig_vol, fig_pps
