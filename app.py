@@ -134,13 +134,32 @@ view = st.sidebar.radio(
     ["Partits", "Acumulats Lliga", "Scouting Jugadors", "Scouting"]
 )
 # canvi: Afegida nota al peu de pàgina de seguretat a la barra lateral de l'staff
+# canvi: Mètode natiu de Streamlit amb clau de fons per fixar la signatura de manera responsiva i neta al fons del sidebar
+with st.sidebar.container(key="sidebar_bottom"):
+    st.markdown(
+        '''
+        <div style="font-size: 0.75rem; color: rgba(128, 128, 128, 0.55); text-align: left; line-height: 1.4; font-family: sans-serif;">
+            Dades FCBQ<br>
+            Víctor Solanes 2026
+        </div>
+        ''', 
+        unsafe_allow_html=True
+    )
+
+# Estil de fons per ancorar el contenidor de fons de manera responsiva
 st.sidebar.markdown(
-    '''
-    <div style="margin-top: 250px; font-size: 0.75rem; color: rgba(128, 128, 128, 0.65); text-align: left; line-height: 1.4; font-family: sans-serif;">
-        Dades FCBQ<br>
-        Víctor Solanes 2026
-    </div>
-    ''', 
+    """
+    <style>
+    div[data-element-idx="sidebar_bottom"] {
+        position: absolute;
+        bottom: 20px;
+    }
+    .st-key-sidebar_bottom {
+        position: absolute;
+        bottom: 20px;
+    }
+    </style>
+    """,
     unsafe_allow_html=True
 )
 # ----------------- VIEW 1: PARTITS -----------------
