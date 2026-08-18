@@ -395,16 +395,14 @@ if view == "Partits":
 
 # ----------------- VIEW 2: LEAGUE & SEASON TRENDS -----------------
 elif view == "Acumulats Lliga":
-    st.title(f"Acumulats Lliga ({selected_season.replace('_', ' ')})")
+    st.title(f"Tendències de la Lliga ({selected_season.replace('_', ' ')})")
     
-    # canvi: S'envien tant BOX_DIR com PBP_DIR per fer la cerca de Jornada en viu
     pbp_cache_key = get_dir_cache_key(BOX_DIR)
     raw_games_df = load_all_raw_game_boxscores(BOX_DIR, PBP_DIR, pbp_cache_key)
     
     if raw_games_df.empty:
         st.info("No s'han trobat dades de boxscores per calcular les tendències de la lliga.")
     else:
-        # canvi: Ordenació numèrica reglamentària de les Jornades de la lliga
         week_options = sorted(
             list(raw_games_df["Week"].dropna().unique()), 
             key=lambda w: [int(s) for s in re.findall(r'\d+', w)] or [w]
@@ -412,7 +410,6 @@ elif view == "Acumulats Lliga":
         
         st.subheader("Filtre dinàmic de partits de la lliga")
         
-        # canvi: Interfície ultra-neta amb un Checkbox per defecte ("Totes")
         select_all_weeks = st.checkbox("Inclou Totes les Jornades de la temporada", value=True)
         
         if select_all_weeks:
@@ -428,17 +425,14 @@ elif view == "Acumulats Lliga":
         if not selected_weeks:
             st.warning("Selecciona almenys una jornada de lliga per calcular les tendències dinàmiques.")
         else:
-            # Filtrem en viu els llançaments ofensius segons la Jornada triada
             filtered_raw_off = raw_games_df[raw_games_df["Week"].isin(selected_weeks)].copy()
             
-            # canvi: Mètode de construcció dinàmica de dades defensives (Rival) basat en la setmana
             all_def_rows = []
             for file_name, group in raw_games_df.groupby("Game_File"):
                 if len(group) == 2:
                     row0 = group.iloc[0]
                     row1 = group.iloc[1]
                     
-                    # Les dades defensives de l'equip A són les dades ofensives del seu oponent (Equip B)
                     def_row0 = {
                         "Team": row0["Team"], "Game_Name": row0["Game_Name"], "Game_File": row0["Game_File"], "Week": row0["Week"],
                         "OERcal": row0["DERcal"], "DERcal": row0["OERcal"], "POSScal": row0["POSScal"],
@@ -476,7 +470,7 @@ elif view == "Acumulats Lliga":
                 if c in filtered_raw_def.columns:
                     filtered_raw_def[c] = pd.to_numeric(filtered_raw_def[c], errors="coerce").fillna(0.0)
             
-            # Càlcul dinàmic d'acumulats d'Atac i Defensa en temps real
+            # Càlcul dinàmic d'atac i defensa en temps real
             offense_df = filtered_raw_off.groupby("Team").agg({c: "mean" for c in agg_cols if c in filtered_raw_off.columns}).reset_index()
             defense_df = filtered_raw_def.groupby("Team").agg({c: "mean" for c in agg_cols if c in filtered_raw_def.columns}).reset_index()
             
@@ -489,15 +483,13 @@ elif view == "Acumulats Lliga":
                     if fgm_c in df_t.columns and fga_c in df_t.columns:
                         df_t[pct_c] = (df_t[fgm_c] / df_t[fga_c] * 100.0).fillna(0.0)
 
-            # canvi: Injectem el format Base64 vàlid perquè st.column_config.ImageColumn el mostri a Streamlit Cloud
+            # Càrrega d'escuts en miniatura Base64 dinàmics per a les cel·les
             offense_df["Escut"] = offense_df["Team"].apply(lambda t: get_team_logo_base64_url(t, selected_season))
             defense_df["Escut"] = defense_df["Team"].apply(lambda t: get_team_logo_base64_url(t, selected_season))
             
-            # Re-ordenem les columnes per col·locar l'escut a l'esquerra de tot
             view_off_cols = ["Escut"] + [c for c in offense_df.columns if c != "Escut"]
             view_def_cols = ["Escut"] + [c for c in defense_df.columns if c != "Escut"]
 
-            # canvi: Afegit el component ImageColumn per pintar els logos en petit dins la classificació
             league_col_config = {
                 "Escut": st.column_config.ImageColumn("Escut", width="small"),
                 "Team": st.column_config.TextColumn("Team", width=260)
@@ -506,11 +498,12 @@ elif view == "Acumulats Lliga":
                 if col not in ["Team", "Escut"]:
                     league_col_config[col] = st.column_config.NumberColumn(col, width=65)
 
-            tab_off, tab_def, tab_chart, tab_lineups = st.tabs([
+            # canvi: Únic bloc de pestanyes net unificat al capdamunt per evitar solapaments temporals de lliga
+            tab_off, tab_def, tab_chart, tab_team_profile = st.tabs([
                 "Classificació d'Atac de la Lliga", 
                 "Classificació de Defensa de la Lliga", 
                 "Gràfic de Dispersió",
-                "Quintets Acumulats"
+                "Perfil de Tir de l'Equip"
             ])
             
             with tab_off:
@@ -534,7 +527,6 @@ elif view == "Acumulats Lliga":
             with tab_chart:
                 st.write("Gràfic d'Anàlisi Dinàmica de la Lliga (Exclou partits i veu els canvis en directe)")
                 
-                # Merge offense and defense to get complete metrics
                 league_df = offense_df.merge(defense_df, on="Team", suffixes=("_Off", "_Def"))
                 
                 x_labels = {
@@ -612,31 +604,18 @@ elif view == "Acumulats Lliga":
                     
                 st.plotly_chart(fig_scat, use_container_width=True)
                 
-            # canvi: Modificat el nom de la pestanya de lliga
-        tab_off, tab_def, tab_chart, tab_team_profile = st.tabs([
-            "Classificació d'Atac de la Lliga", 
-            "Classificació de Defensa de la Lliga", 
-            "Gràfic de Dispersió",
-            "Perfil de Tir de l'Equip" # <--- Nou nom
-        ])
-        
-        # ... les teves pestanyes tab_off, tab_def i tab_chart es queden IGUAL ...
-        
-        with tab_team_profile:
-            # canvi: Afegit el gràfic de barres de volum i PPS mitjà dinàmic per equip (Fase 2 de lliga)
-            scout_teams = sorted(list(offense_df["Team"].unique()))
-            selected_profile_team = st.selectbox("Selecciona l'Equip per analitzar el seu Perfil de Tir", scout_teams)
-            
-            # Calculem el PPS dinàmic de la lliga per a la línia discontínua
-            league_pps_val = calculate_league_average_pps(filtered_raw_off)
-            
-            fig_vol_seasonal, fig_pps_seasonal = draw_team_seasonal_zone_charts(offense_df, selected_profile_team, league_pps_val)
-            
-            col_prof1, col_prof2 = st.columns(2)
-            with col_prof1:
-                st.plotly_chart(fig_vol_seasonal, use_container_width=True)
-            with col_prof2:
-                st.plotly_chart(fig_pps_seasonal, use_container_width=True)
+            with tab_team_profile:
+                scout_teams = sorted(list(offense_df["Team"].unique()))
+                selected_profile_team = st.selectbox("Selecciona l'Equip per analitzar el seu Perfil de Tir", scout_teams)
+                
+                league_pps_val = calculate_league_average_pps(filtered_raw_off)
+                fig_vol_seasonal, fig_pps_seasonal = draw_team_seasonal_zone_charts(offense_df, selected_profile_team, league_pps_val)
+                
+                col_prof1, col_prof2 = st.columns(2)
+                with col_prof1:
+                    st.plotly_chart(fig_vol_seasonal, use_container_width=True)
+                with col_prof2:
+                    st.plotly_chart(fig_pps_seasonal, use_container_width=True)
 # ----------------- VIEW 3: PLAYER SHOOTING INDEX -----------------
 elif view == "Scouting Jugadors":
     st.title(f"Índex de Tir dels Jugadors ({selected_season.replace('_', ' ')})")
