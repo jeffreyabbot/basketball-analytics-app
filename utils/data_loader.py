@@ -438,6 +438,10 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
                     break
                     
             if team_col is not None:
+                # canvi: Estandarditzem tota la columna de l'excel de fons per permetre la unificació del Grup Barna al 100% de files
+                df_lineups[team_col] = df_lineups[team_col].apply(standardize_team_name)
+                
+                # Ara la igualtat estricta de text es validarà perfectament (True)
                 df_team = df_lineups[df_lineups[team_col] == selected_team].copy()
                 all_lineups.append(df_team)
         except Exception:
