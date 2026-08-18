@@ -103,12 +103,25 @@ CB_BLUE = "#1f77b4"
 CB_ORANGE = "#ff7f0e"
 CB_NEUTRAL = "#4a4a4a"
 
-st.sidebar.title("Dashboard Copa Catalunya")
-# canvi: Afegit el logo oficial de la Copa Catalunya a la capçalera de fons de la barra lateral
+# canvi: Eliminat el títol de text redundant i transformat el logo oficial en una elegant targeta flotant arrodonida i amb ombra (Fase 1 de disseny)
 copa_logo_path = "copa_catalunya.png"
 if os.path.exists(copa_logo_path):
-    # Utilitzem el nostre codificador Base64 per centrar l'escut i protegir-ne les proporcions reals
-    st.sidebar.markdown(get_logo_html_centered(copa_logo_path, max_height=80, max_width=180), unsafe_allow_html=True)
+    # Llegim i codifiquem l'escut en Base64
+    with open(copa_logo_path, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode()
+    
+    # Renderitzem un contingut HTML d'alta gamma: cantonades arrodonides (8px) i ombra suau per evitar l'efecte "pegat"
+    st.sidebar.markdown(
+        f'''
+        <div style="display: flex; justify-content: center; align-items: center; margin-top: 15px; margin-bottom: 25px; width: 100%;">
+            <img src="data:image/png;base64,{encoded_string}" style="max-height: 90px; max-width: 190px; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        </div>
+        ''', 
+        unsafe_allow_html=True
+    )
+else:
+    # Fallback clàssic per si s'esborrés el fitxer de disc
+    st.sidebar.title("Dashboard Copa Catalunya")
 
 # 1. Season Selector in Sidebar
 seasons = get_available_seasons(RAW_DIR)
