@@ -919,10 +919,11 @@ elif view == "Scouting Equips":
                     
             st.markdown("---")
             st.subheader("Comparativa de Rànquings i Eficiència de l'Equip")
-            
+            # canvi: Restaurades les definicions de rànquings ofensius/defensius i càlculs de l'staff
             off_ranks = offense_df.copy()
             def_ranks = defense_df.copy()
             
+            # Offensive Rankings (Higher is better)
             off_ranks["OER_Rank"] = off_ranks["OERcal"].rank(ascending=False, method="min")
             off_ranks["eFG_Rank"] = off_ranks["eFG%"].rank(ascending=False, method="min")
             off_ranks["ORB_Rank"] = off_ranks["ORB%cal"].rank(ascending=False, method="min")
@@ -930,12 +931,14 @@ elif view == "Scouting Equips":
             off_ranks["Pace_Rank"] = off_ranks["POSScal"].rank(ascending=False, method="min")
             off_ranks["TOV_Rank"] = off_ranks["TOV%cal"].rank(ascending=True, method="min")
             
+            # Defensive Rankings (DER, Opp eFG%, Opp ORB%, Opp FTR lower is better; Opp TO% higher is better)
             def_ranks["DER_Rank"] = def_ranks["OERcal"].rank(ascending=True, method="min")
             def_ranks["eFG_Def_Rank"] = def_ranks["eFG%"].rank(ascending=True, method="min")
             def_ranks["TOV_Def_Rank"] = def_ranks["TOV%cal"].rank(ascending=False, method="min")
             def_ranks["ORB_Def_Rank"] = def_ranks["ORB%cal"].rank(ascending=True, method="min")
             def_ranks["FTR_Def_Rank"] = def_ranks["FTR"].rank(ascending=True, method="min")
             
+            # Cerca de dades reals i rànquings per a tots dos equips
             def get_team_scout_stats(team_name):
                 t_off = off_ranks[off_ranks["Team"] == team_name].iloc[0]
                 t_def = def_ranks[def_ranks["Team"] == team_name].iloc[0]
@@ -956,6 +959,32 @@ elif view == "Scouting Equips":
             stats_A = get_team_scout_stats(team_A)
             stats_B = get_team_scout_stats(team_B)
             
+            # canvi: Funció programàtica per calcular la força de fons (0 a 1) sobre els rànquings reals restaurats
+            def get_normalized_strength(key, val, off_df, def_df):
+                is_def_metric = key in ["DER", "eFG_Def", "TOV_Def", "ORB_Def", "FTR_Def"]
+                df_target = def_df if is_def_metric else off_df
+                
+                col_map = {
+                    "OER": "OERcal", "DER": "DERcal", "Pace": "POSScal",
+                    "eFG": "eFG%", "TOV": "TOV%cal", "ORB": "ORB%cal", "FTR": "FTR",
+                    "eFG_Def": "eFG%", "TOV_Def": "TOV%cal", "ORB_Def": "ORB%cal", "FTR_Def": "FTR"
+                }
+                col_name = col_map[key]
+                
+                min_v = float(df_target[col_name].min())
+                max_v = float(df_target[col_name].max())
+                
+                if max_v == min_v:
+                    return 0.5
+                    
+                lower_is_better = key in ["DER", "TOV", "eFG_Def", "ORB_Def", "FTR_Def"]
+                
+                if lower_is_better:
+                    norm = (max_v - val) / (max_v - min_v)
+                else:
+                    norm = (val - min_v) / (max_v - min_v)
+                return max(0.0, min(1.0, float(norm)))
+
             mirror_data = []
             metrics_mapping = [
                 ("OER", "Ràting Ofensiu (OER)", "{:.2f}"),
@@ -982,19 +1011,28 @@ elif view == "Scouting Equips":
                 val_A, rank_A = stats_A[key]
                 val_B, rank_B = stats_B[key]
                 
+                strength_A = get_normalized_strength(key, val_A, off_ranks, def_ranks)
+                strength_B = get_normalized_strength(key, val_B, off_ranks, def_ranks)
+                
                 str_A = f"{cat_rank(rank_A)} ({fmt.format(val_A)})"
                 str_B = f"{cat_rank(rank_B)} ({fmt.format(val_B)})"
+                
                 mirror_data.append({
+                    "Fortalesa (A)": strength_A,
                     f"Rànquing ({team_A})": str_A,
                     "Mètrica de Lliga": name,
-                    f"Rànquing ({team_B})": str_B
+                    f"Rànquing ({team_B})": str_B,
+                    "Fortalesa (B)": strength_B
                 })
                 
+            # canvi: Generació de la taula compacta en mirall amb fons de 5 columnes (Fase 3 de Scouting)
             mirror_df = pd.DataFrame(mirror_data)
             mirror_col_config = {
-                f"Rànquing ({team_A})": st.column_config.TextColumn(f"Rànquing ({team_A})", width=220),
-                "Mètrica de Lliga": st.column_config.TextColumn("Mètrica de Lliga", width=260),
-                f"Rànquing ({team_B})": st.column_config.TextColumn(f"Rànquing ({team_B})", width=220)
+                "Fortalesa (A)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="small"),
+                f"Rànquing ({team_A})": st.column_config.TextColumn(f"Rànquing ({team_A})", width=140),
+                "Mètrica de Lliga": st.column_config.TextColumn("Mètrica de Lliga", width=220),
+                f"Rànquing ({team_B})": st.column_config.TextColumn(f"Rànquing ({team_B})", width=140),
+                "Fortalesa (B)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="small")
             }
             st.dataframe(
                 mirror_df,
