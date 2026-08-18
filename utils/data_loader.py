@@ -6,7 +6,17 @@ import re
 import datetime
 import streamlit as st
 import base64
-
+# Afegeix-ho a dalt d'utils/data_loader.py, a sota dels imports:
+def standardize_team_name(name):
+    """
+    Standardizes alternative spellings of team names (e.g. Grup Barna)
+    to ensure perfect grouping without duplicates.
+    """
+    name_str = str(name).strip()
+    name_upper = name_str.upper()
+    if "GRUP BARNA" in name_upper:
+        return "C.B GRUP BARNA A"
+    return " ".join(name_str.split())
 def resolve_path_case_insensitive(base_dir, *subdirs_and_file):
     """
     Traverses directories case-insensitively on Linux platforms.
@@ -87,20 +97,26 @@ def parse_boxscore(file_path):
     Separates the team summaries from the individual player performance blocks.
     """
     team_df = pd.read_excel(file_path, header=0, nrows=2)
-    full_sheet = pd.read_excel(file_path, header=None)
+    team_df.columns = team_df.columns.str.strip()
     
+    # canvi: Estandarditzem els noms de l'equip a la fila resum del partit
+    team_df["Team"] = team_df["Team"].apply(standardize_team_name)
+    
+    full_sheet = pd.read_excel(file_path, header=None)
     jugador_rows = full_sheet[full_sheet.eq("JUGADOR").any(axis=1)].index.tolist()
     
     if len(jugador_rows) < 2:
         raise ValueError("Could not find the 'JUGADOR' header blocks in the boxscore sheet.")
         
-    t1_name = str(full_sheet.iloc[jugador_rows[0] - 1, 0]).strip()
+    # canvi: Estandarditzem els noms de l'equip de la línia superior de fons
+    t1_name = standardize_team_name(full_sheet.iloc[jugador_rows[0] - 1, 0])
+    t2_name = standardize_team_name(full_sheet.iloc[jugador_rows[1] - 1, 0])
+    
     t1_players = pd.read_excel(file_path, skiprows=jugador_rows[0])
     
     slice_idx = jugador_rows[1] - jugador_rows[0] - 2
     t1_players = t1_players.iloc[:slice_idx].dropna(subset=["JUGADOR"]).copy()
     
-    t2_name = str(full_sheet.iloc[jugador_rows[1] - 1, 0]).strip()
     t2_players = pd.read_excel(file_path, skiprows=jugador_rows[1]).dropna(subset=["JUGADOR"]).copy()
     
     # Strip any potential leading/trailing whitespace inside column names
@@ -112,7 +128,6 @@ def parse_boxscore(file_path):
     t2_players["TIME"] = t2_players["TIME"].apply(format_time_cleanly)
     
     return team_df, (t1_name, t1_players), (t2_name, t2_players)
-
 def parse_pbp(file_path):
     """Reads the 3 distinct sheets of the PBP file."""
     xls = pd.ExcelFile(file_path)
@@ -130,10 +145,15 @@ def parse_aggregate(file_path):
     offense_df = pd.read_excel(xls, sheet_name=0)
     defense_df = pd.read_excel(xls, sheet_name=1)
     
+    # canvi: Estandarditzem els equips a les dades acumulades de lliga de fons
+    offense_df["Team"] = offense_df["Team"].apply(standardize_team_name)
+    defense_df["Team"] = defense_df["Team"].apply(standardize_team_name)
+    
     all_players = []
     for sheet_name in xls.sheet_names[2:]:
         df_players = pd.read_excel(xls, sheet_name=sheet_name)
-        df_players["Team"] = sheet_name
+        # canvi: Estandarditzem el nom de l'equip del nom de la pestanya
+        df_players["Team"] = standardize_team_name(sheet_name)
         df_players = df_players.dropna(subset=["JUGADOR"]).copy()
         
         # Clean and format player aggregate TIME columns
@@ -143,7 +163,6 @@ def parse_aggregate(file_path):
         
     master_players = pd.concat(all_players, ignore_index=True)
     return offense_df, defense_df, master_players
-
 # --- HELPERS FOR TIME ROUNDING & MULTI-METRIC PBP ALIGNMENT ---
 
 def parse_time_to_minutes(val):
@@ -460,6 +479,7 @@ def load_and_aggregate_season_lineups(pbp_dir, selected_team, cache_key):
         
     return aggregated, combined_df
 
+# Cerca la funció load_all_raw_game_boxscores a utils/data_loader.py i substitueix-la:
 @st.cache_data
 def load_all_raw_game_boxscores(boxscore_dir, pbp_dir, cache_key):
     """
@@ -478,6 +498,9 @@ def load_all_raw_game_boxscores(boxscore_dir, pbp_dir, cache_key):
             team_df = pd.read_excel(f, header=0, nrows=2)
             team_df.columns = team_df.columns.str.strip()
             
+            # canvi: Estandarditzem els equips en la lectura massiva de partits en viu de la lliga
+            team_df["Team"] = team_df["Team"].apply(standardize_team_name)
+            
             # Clean and format game names
             base = os.path.basename(f)
             game_name = base.replace("boxscore_", "").replace(".xlsx", "").replace("_", " ").title()
@@ -491,25 +514,21 @@ def load_all_raw_game_boxscores(boxscore_dir, pbp_dir, cache_key):
             t2_name = str(team_df.iloc[1].get("Team", "")).strip()
             pbp_path = find_best_matching_pbp(t1_name, t2_name, pbp_dir, base)
             
-            # canvi: Cerca de capçalera intel·ligent per extreure el valor numèric real en lloc de la paraula "Week"
             week_val = None
             if pbp_path and os.path.exists(pbp_path):
                 try:
                     xls = pd.ExcelFile(pbp_path)
                     if len(xls.sheet_names) >= 3:
                         df_lin = pd.read_excel(xls, sheet_name=2, nrows=5)
-                        # Netegem els noms de les columnes per cercar "week" de manera robusta
                         df_lin.columns = df_lin.columns.str.strip().str.lower()
                         week_cols = [c for c in df_lin.columns if "week" in str(c)]
                         
                         if week_cols and not df_lin.empty:
                             week_val = df_lin[week_cols[0]].iloc[0]
                         else:
-                            # Fallback a la segona columna de fons en cas d'un disseny sense nom de capçalera
                             week_val = df_lin.iloc[0, 1]
                 except Exception:
                     pass
-
                     
             # Fallback si no troba el PBP de fons
             if week_val is None or pd.isna(week_val):

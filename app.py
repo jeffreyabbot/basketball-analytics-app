@@ -500,10 +500,10 @@ elif view == "Acumulats Lliga":
 
             # canvi: Únic bloc de pestanyes net unificat al capdamunt per evitar solapaments temporals de lliga
             tab_off, tab_def, tab_chart, tab_team_profile = st.tabs([
-                "Classificació d'Atac de la Lliga", 
-                "Classificació de Defensa de la Lliga", 
-                "Gràfic de Dispersió",
-                "Perfil de Tir de l'Equip"
+                "Dades Equip", 
+                    "Dades Rival", 
+                    "Gràfic de Dispersió",
+                    "Perfil de Tir"
             ])
             
             with tab_off:
