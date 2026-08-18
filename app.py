@@ -133,7 +133,9 @@ view = st.sidebar.radio(
     "Visualitzacions", 
     ["Partits", "Acumulats Lliga", "Scouting Jugadors", "Scouting"]
 )
-
+# canvi: Afegida nota al peu de pàgina de seguretat a la barra lateral de l'staff
+st.sidebar.markdown("---")
+st.sidebar.caption("Dades FCBQ, Víctor Solanes 2026")
 # ----------------- VIEW 1: PARTITS -----------------
 if view == "Partits":
     st.title(f"Analitzador de Partits ({selected_season.replace('_', ' ')})")
