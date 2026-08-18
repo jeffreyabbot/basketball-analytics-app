@@ -149,7 +149,7 @@ if not AGG_FILE or not os.path.exists(AGG_FILE):
 # 3. View selector (Sidebar) - canvi: Noms de navegació lateral simplificats i reestructurats
 view = st.sidebar.radio(
     "Visualitzacions", 
-    ["Partits", "Acumulats Lliga", "Scouting Jugadors", "Scouting"]
+    ["Partits", "Acumulats Lliga", "Scouting Jugadors", "Scouting Equips"]
 )
 # canvi: Afegida nota al peu de pàgina de seguretat a la barra lateral de l'staff
 # canvi: Mètode natiu de Streamlit amb clau de fons per fixar la signatura de manera responsiva i neta al fons del sidebar
