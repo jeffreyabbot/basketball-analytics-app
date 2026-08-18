@@ -520,20 +520,34 @@ def load_all_raw_game_boxscores(boxscore_dir, pbp_dir, cache_key):
                 try:
                     xls = pd.ExcelFile(pbp_path)
                     if len(xls.sheet_names) >= 3:
-                        # Llegim el full de quintets de manera normal (agafant capçaleres)
+                        # Carreguem el full normalment per buscar el nom de columna "week"
                         df_lin = pd.read_excel(xls, sheet_name=2, nrows=5)
                         df_lin.columns = df_lin.columns.str.strip().str.lower()
                         
-                        # Busquem estrictament la columna "week" i n'agafem el primer valor de fons
+                        # Busquem estrictament la columna "week"
                         week_cols = [c for c in df_lin.columns if "week" in str(c)]
+                        raw_val = None
                         if week_cols and not df_lin.empty:
-                            raw_val = df_lin[week_cols[0]].iloc[0]
-                            if pd.notna(raw_val):
-                                week_val = int(float(str(raw_val).replace(",", ".").strip()))
+                            raw_val = df_lin[week_cols[0]].dropna().iloc[0]
+                        else:
+                            # Fallback de seguretat estricte a la segona columna física (index 1) si no hi ha nom de capçalera
+                            df_lin_no_header = pd.read_excel(xls, sheet_name=2, header=None, nrows=5)
+                            if len(df_lin_no_header.columns) > 1:
+                                # Escaneja verticalment només la segona columna saltant la capçalera
+                                for r in range(1, len(df_lin_no_header)):
+                                    val = df_lin_no_header.iloc[r, 1]
+                                    if pd.notna(val):
+                                        raw_val = val
+                                        break
+                                        
+                        if raw_val is not None:
+                            num = float(str(raw_val).replace(",", ".").strip())
+                            if num.is_integer() and 1 <= num <= 40:
+                                week_val = int(num)
                 except Exception:
                     pass
                     
-            # canvi: Si no es troba la jornada real del PBP, es classifica directament com a "Altres"
+            # Si no es troba la jornada real del PBP, es classifica directament com a "Altres"
             if week_val is None or pd.isna(week_val):
                 week_val = "Altres / Sense Jornada"
             else:
