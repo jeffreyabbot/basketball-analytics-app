@@ -498,7 +498,7 @@ def load_all_raw_game_boxscores(boxscore_dir, pbp_dir, cache_key):
             team_df = pd.read_excel(f, header=0, nrows=2)
             team_df.columns = team_df.columns.str.strip()
             
-            # canvi: Estandarditzem els equips en la lectura massiva de partits en viu de la lliga
+            # Estandarditzem els equips en la lectura massiva de partits en viu de la lliga
             team_df["Team"] = team_df["Team"].apply(standardize_team_name)
             
             # Clean and format game names
@@ -519,26 +519,32 @@ def load_all_raw_game_boxscores(boxscore_dir, pbp_dir, cache_key):
                 try:
                     xls = pd.ExcelFile(pbp_path)
                     if len(xls.sheet_names) >= 3:
-                        df_lin = pd.read_excel(xls, sheet_name=2, nrows=5)
-                        df_lin.columns = df_lin.columns.str.strip().str.lower()
-                        week_cols = [c for c in df_lin.columns if "week" in str(c)]
+                        # Carreguem el full sense capçaleres per fer l'escaneig dinàmic
+                        df_lin = pd.read_excel(xls, sheet_name=2, header=None, nrows=10)
                         
-                        if week_cols and not df_lin.empty:
-                            week_val = df_lin[week_cols[0]].iloc[0]
-                        else:
-                            week_val = df_lin.iloc[0, 1]
+                        # canvi: Escaneig ultra-precís de la segona columna a la recerca d'un número de setmana vàlid (1 a 40)
+                        if len(df_lin.columns) > 1:
+                            for val in df_lin.iloc[:, 1]:
+                                try:
+                                    num = float(str(val).replace(",", ".").strip())
+                                    if num.is_integer() and 1 <= num <= 40:
+                                        week_val = int(num)
+                                        break
+                                except ValueError:
+                                    continue
                 except Exception:
                     pass
                     
-            # Fallback si no troba el PBP de fons
+            # canvi: Control de seguretat de fons estricte per evitar falses assignacions per marcadors o data
             if week_val is None or pd.isna(week_val):
-                nums = re.findall(r'\b\d{1,2}\b', base)
-                if nums:
-                    week_val = f"Jornada {nums[0]}"
+                # Cerca de paraules clau com j7, j.7, jornada 7, w7, week 7
+                match_week = re.search(r'\b(?:j|j\.|jornada|w|week)\s*(\d{1,2})\b', base.lower())
+                if match_week:
+                    week_val = f"Jornada {match_week.group(1)}"
                 else:
-                    week_val = "Altres"
+                    week_val = "Altres / Sense Jornada"
             else:
-                week_val = f"Jornada {int(float(week_val))}" if isinstance(week_val, (int, float)) else f"Jornada {week_val}"
+                week_val = f"Jornada {week_val}"
                 
             team_df["Week"] = week_val
             all_game_summaries.append(team_df)
