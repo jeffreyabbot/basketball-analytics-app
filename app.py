@@ -401,13 +401,14 @@ elif view == "Acumulats Lliga":
     if raw_games_df.empty:
         st.info("No s'han trobat dades de boxscores per calcular les tendències de la lliga.")
     else:
+        # canvi: Integració de l'eina de diagnòstic i l'avís de fallback de fons de partits de lliga
         st.subheader("Filtre dinàmic de partits de la lliga")
         
-        # Comptador de fitxers generals carregats
+        # 1. Comptador de fitxers generals carregats
         total_files = len(glob.glob(os.path.join(BOX_DIR, "*.xlsx"))) if BOX_DIR else 0
         st.write(f"📂 **Estat dels fitxers:** S'han carregat **{len(raw_games_df) // 2} partits** d'un total de **{total_files} fitxers** d'excel de boxscores trobats.")
 
-        # Desplegable d'avisos per a partits que han caigut al fallback d'Altres
+        # 2. Desplegable d'avisos per a partits que han caigut al fallback d'Altres
         missing_week_games = raw_games_df[raw_games_df["Week"] == "Altres / Sense Jornada"]
         if not missing_week_games.empty:
             st.warning("⚠️ S'han trobat partits que no s'han pogut assignar a cap jornada. Revisa el desplegable inferior d'avisos.")
@@ -419,17 +420,27 @@ elif view == "Acumulats Lliga":
                     hide_index=True
                 )
                 
-        # Taula interactiva de distribució de partits de lliga
+        # 3. Taula de distribució de partits per Jornada
         with st.expander("📊 Veure la distribució real de partits per Jornada de la teva lliga"):
             week_counts = raw_games_df["Week"].value_counts().reset_index()
             week_counts.columns = ["Jornada de fons", "Partits totals de lliga (Ambdós equips)"]
             
-            # Ordenació numèrica de les files
             week_counts = week_counts.sort_values(
                 "Jornada de fons", 
                 key=lambda x: x.apply(lambda w: [int(s) for s in re.findall(r'\d+', str(w))] or [str(w)])
             )
             st.dataframe(week_counts, use_container_width=False, hide_index=True)
+            
+        # 4. canvi: Nova taula d'Auditoria Detallada d'arxius per comprovar quina Jornada exacta llegeix de cada fitxer real
+        with st.expander("🔍 Auditoria detallada: Quina Jornada s'ha llegit de cada fitxer?"):
+            st.write("Aquesta taula et mostra el nom de l'arxiu d'excel de cada partit i la Jornada exacta que s'ha extret del seu fitxer PBP corresponent. Comprova si el teu excel de PBP conté aquest número a la columna 'Week' de la pestanya 'Lineups':")
+            audit_df = raw_games_df[["Game_Name", "Week", "Game_File"]].drop_duplicates()
+            # Ordenació numèrica de les files per setmana
+            audit_df = audit_df.sort_values(
+                "Week", 
+                key=lambda x: x.apply(lambda w: [int(s) for s in re.findall(r'\d+', str(w))] or [str(w)])
+            )
+            st.dataframe(audit_df, use_container_width=True, hide_index=True)
             
         select_all_weeks = st.checkbox("Inclou Totes les Jornades de la temporada", value=True)
         
