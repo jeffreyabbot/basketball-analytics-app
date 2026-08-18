@@ -134,7 +134,6 @@ view = st.sidebar.radio(
     ["Partits", "Acumulats Lliga", "Scouting Jugadors", "Scouting"]
 )
 # canvi: Afegida nota al peu de pàgina de seguretat a la barra lateral de l'staff
-st.sidebar.markdown("---")
 st.sidebar.markdown(
     '''
     <div style="font-size: 0.75rem; color: rgba(128, 128, 128, 0.65); text-align: left; line-height: 1.4;">
