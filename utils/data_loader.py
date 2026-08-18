@@ -6,6 +6,7 @@ import re
 import datetime
 import streamlit as st
 import base64
+import unicodedata
 # Afegeix-ho a dalt d'utils/data_loader.py, a sota dels imports:
 def standardize_team_name(name):
     """
@@ -306,7 +307,8 @@ def normalize_and_format_player_times(players_df, target_minutes):
 def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
     """
     Finds PBP files via multiple matching fallbacks:
-    1. Team Name Overlaps (extracted from sheet)
+    0. Exact/Case-insensitive filename match (by stripping 'boxscore_' and 'pbp_')
+    1. Team Name Overlaps (stripping accents and common terms)
     2. Date/ID matching based on filename numbers
     3. Flat file directories fallback (if only 1 file exists)
     """
@@ -317,19 +319,37 @@ def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
     if not pbp_files:
         return None
         
+    # Attempt 0: Exact filename check (case-insensitive and prefix independent)
+    box_clean_base = boxscore_filename.lower().replace("boxscore_", "").replace("pbp_", "").strip()
+    for pf in pbp_files:
+        pf_clean_base = pf.lower().replace("boxscore_", "").replace("pbp_", "").strip()
+        if pf_clean_base == box_clean_base:
+            return os.path.join(pbp_dir, pf)
+            
+    # Helper to strip accents from strings (e.g. "sarrià" -> "sarria")
+    def strip_accents(s):
+        return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+        
+    # Attempt 1: Match by Team Name keywords (Strongest)
     t1_words = set(re.findall(r'\w+', t1_name.lower()))
     t2_words = set(re.findall(r'\w+', t2_name.lower()))
     for common in ["cb", "c", "b", "1", "2", "3", "a", "basket", "basquet", "club", "unio", "esportiva"]:
         t1_words.discard(common)
         t2_words.discard(common)
         
+    # Strip accents for 100% robust cross-platform matching
+    t1_words = set(strip_accents(w) for w in t1_words)
+    t2_words = set(strip_accents(w) for w in t2_words)
+    
     best_file = None
     best_score = 0
     
     for pf in pbp_files:
         pf_lower = pf.lower()
-        t1_matches = sum(1 for w in t1_words if w in pf_lower)
-        t2_matches = sum(1 for w in t2_words if w in pf_lower)
+        pf_clean_accents = strip_accents(pf_lower)
+        
+        t1_matches = sum(1 for w in t1_words if w in pf_clean_accents)
+        t2_matches = sum(1 for w in t2_words if w in pf_clean_accents)
         
         if t1_matches >= 1 and t2_matches >= 1:
             score = t1_matches + t2_matches
@@ -340,6 +360,7 @@ def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
     if best_file:
         return os.path.join(pbp_dir, best_file)
         
+    # Attempt 2: Match by date/numbers inside the filename (Fallback)
     box_numbers = re.findall(r'\d+', boxscore_filename)
     if box_numbers:
         longest_num = max(box_numbers, key=len)
@@ -348,11 +369,11 @@ def find_best_matching_pbp(t1_name, t2_name, pbp_dir, boxscore_filename):
                 if longest_num in pf:
                     return os.path.join(pbp_dir, pf)
                     
+    # Attempt 3: If only one PBP file exists, default to it
     if len(pbp_files) == 1:
         return os.path.join(pbp_dir, pbp_files[0])
         
     return None
-
 def tag_shot_team(pbp_df, t1_name, t2_name):
     """Tags each play with the correct team name based on team stats columns."""
     pbp_df = pbp_df.copy()
