@@ -408,7 +408,19 @@ elif view == "Acumulats Lliga":
             key=lambda w: [int(s) for s in re.findall(r'\d+', w)] or [w]
         )
         
+        # canvi: Integració de l'eina de diagnòstic de fitxers de lliga per a l' staff
         st.subheader("Filtre dinàmic de partits de la lliga")
+        
+        # Cerca si hi ha partits sense jornada assignada (que han caigut al fallback d'Altres)
+        missing_week_games = raw_games_df[raw_games_df["Week"] == "Altres / Sense Jornada"]
+        if not missing_week_games.empty:
+            with st.expander("⚠️ Avisos de fitxers (Alguns partits de la carpeta no tenen la Jornada assignada)"):
+                st.write("Els següents partits no han trobat el seu fitxer Play-By-Play corresponent o no s'ha pogut extreure la jornada del seu excel, pel que s'han assignat a 'Altres / Sense Jornada':")
+                st.dataframe(
+                    missing_week_games[["Game_Name", "Game_File"]].drop_duplicates(), 
+                    use_container_width=True, 
+                    hide_index=True
+                )
         
         select_all_weeks = st.checkbox("Inclou Totes les Jornades de la temporada", value=True)
         
