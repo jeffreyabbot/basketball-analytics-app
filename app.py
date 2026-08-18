@@ -605,17 +605,36 @@ elif view == "Acumulats Lliga":
                 st.plotly_chart(fig_scat, use_container_width=True)
                 
             with tab_team_profile:
-                scout_teams = sorted(list(offense_df["Team"].unique()))
-                selected_profile_team = st.selectbox("Selecciona l'Equip per analitzar el seu Perfil de Tir", scout_teams)
-                
-                league_pps_val = calculate_league_average_pps(filtered_raw_off)
-                fig_vol_seasonal, fig_pps_seasonal = draw_team_seasonal_zone_charts(offense_df, selected_profile_team, league_pps_val)
-                
-                col_prof1, col_prof2 = st.columns(2)
-                with col_prof1:
-                    st.plotly_chart(fig_vol_seasonal, use_container_width=True)
-                with col_prof2:
-                    st.plotly_chart(fig_pps_seasonal, use_container_width=True)
+                    scout_teams = sorted(list(offense_df["Team"].unique()))
+                    selected_profile_team = st.selectbox("Selecciona l'Equip per analitzar el seu Perfil de Tir", scout_teams)
+                    
+                    league_pps_val = calculate_league_average_pps(filtered_raw_off)
+                    
+                    # --- SECCIÓ 1: PERFIL OFENSIU (ATAC) ---
+                    st.subheader("📊 Perfil de Tir Ofensiu (Atac)")
+                    fig_vol_seasonal, fig_pps_seasonal = draw_team_seasonal_zone_charts(offense_df, selected_profile_team, league_pps_val)
+                    
+                    col_prof1, col_prof2 = st.columns(2)
+                    with col_prof1:
+                        st.plotly_chart(fig_vol_seasonal, use_container_width=True)
+                    with col_prof2:
+                        st.plotly_chart(fig_pps_seasonal, use_container_width=True)
+                        
+                    # canvi: Afegida la Secció 2 de Perfil Defensiu (Rivals contra ells) usant defense_df de fons
+                    st.markdown("---")
+                    st.subheader("📊 Perfil de Tir Defensiu (Defensa - Permès als Rivals)")
+                    st.write("Estudia quins llançaments concedeix aquest equip: els gràfics següents mostren el volum i l'eficiència (PPS) de tir dels rivals quan juguen contra ells.")
+                    
+                    fig_vol_def, fig_pps_def = draw_team_seasonal_zone_charts(defense_df, selected_profile_team, league_pps_val)
+                    
+                    col_def1, col_def2 = st.columns(2)
+                    with col_def1:
+                        # Personalitzem els títols dels gràfics per a la defensa de fons
+                        fig_vol_def.update_layout(title=f"Volum de Tirs Concedits de Mitjana - {selected_profile_team}")
+                        st.plotly_chart(fig_vol_def, use_container_width=True)
+                    with col_def2:
+                        fig_pps_def.update_layout(title=f"Eficiència de Tir Concedida (PPS) - {selected_profile_team}")
+                        st.plotly_chart(fig_pps_def, use_container_width=True)
 # ----------------- VIEW 3: PLAYER SHOOTING INDEX -----------------
 elif view == "Scouting Jugadors":
     st.title(f"Índex de Tir dels Jugadors ({selected_season.replace('_', ' ')})")
