@@ -690,7 +690,7 @@ elif view == "Acumulats Lliga":
 
 # ----------------- VIEW 3: SCOUTING JUGADORS -----------------
 elif view == "Scouting Jugadors":
-    st.title(f"Índex de Tir dels Jugadors ({selected_season.replace('_', ' ')})")
+    st.title(f"Scouting Jugadors ({selected_season.replace('_', ' ')})")
     
     if not AGG_FILE or not os.path.exists(AGG_FILE):
         st.info("No s'han trobat acumulats de lliga. Comprova els fitxers d'acumulats de la temporada.")
@@ -884,7 +884,7 @@ elif view == "Scouting Jugadors":
 
 # ----------------- VIEW 4: SCOUTING -----------------
 elif view == "Scouting":
-    st.title(f"Mòdul de Scouting de Rivals ({selected_season.replace('_', ' ')})")
+    st.title(f"Scouting Equips ({selected_season.replace('_', ' ')})")
     
     if not AGG_FILE or not os.path.exists(AGG_FILE):
         st.info("No s'ha trobat el fitxer d'acumulats de lliga. Afegeix 'aggregate_season_latest.xlsx' a la seva carpeta.")
