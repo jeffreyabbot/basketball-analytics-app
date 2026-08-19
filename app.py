@@ -95,33 +95,81 @@ def calculate_league_average_pps(raw_games_df):
     except Exception:
         return 0.95
 # Afegeix-ho a dalt d'app.py, a sota del mòdul de calculate_league_average_pps:
-def highlight_outliers(column):
+# canvi: Dos detectors d'outliers independents i calibrats segons la mètrica de fons ofensiva o defensiva
+def highlight_offense_outliers(column):
     """
-    Pandas styler function that dynamically highlights statistical outliers in each column:
-    - High outliers (> mean + 1.2*std) are highlighted in soft translucent red/coral.
-    - Low outliers (< mean - 1.2*std) are highlighted in soft translucent blue/teal.
+    Styler for Offense Table (Dades Equips).
+    - DERcal and TOV%cal are better when lower (low in Red, high in Blue).
+    - OERcal, POSScal, eFG%, ORB%cal, FTR are better when higher (high in Red, low in Blue).
     """
-    # Apliquem només a columnes numèriques, ignorant l'escut, el nom o els textos
     if not pd.api.types.is_numeric_dtype(column) or column.name in ["Team", "Escut", "Week"]:
         return [''] * len(column)
         
     mean = column.mean()
     std = column.std()
-    
-    # Control de seguretat si no hi ha prou variància
     if pd.isna(std) or std == 0:
         return [''] * len(column)
         
+    # Columnes on un valor més baix és millor per al teu equip
+    lower_is_better = column.name in ["DERcal", "TOV%cal"]
+    
     styles = []
     for val in column:
         if pd.isna(val):
             styles.append('')
         elif val > mean + 1.2 * std:
-            # Vermell corporatiu suau amb text en negreta per als valors alts d' elit
-            styles.append('background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;')
+            if lower_is_better:
+                # Alt és DOLENT (Blau)
+                styles.append('background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;')
+            else:
+                # Alt és BO (Vermell)
+                styles.append('background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;')
         elif val < mean - 1.2 * std:
-            # Blau corporatiu suau amb text en negreta per als valors baixos desajustats
-            styles.append('background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;')
+            if lower_is_better:
+                # Baix és BO (Vermell)
+                styles.append('background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;')
+            else:
+                # Baix és DOLENT (Blau)
+                styles.append('background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;')
+        else:
+            styles.append('')
+    return styles
+
+def highlight_defense_outliers(column):
+    """
+    Styler for Defense Table (Dades Rivals).
+    - OERcal (points allowed), eFG% (shooting allowed), ORB%cal (rebounds allowed), FTR (FT allowed) are better when lower (low in Red, high in Blue).
+    - TOV%cal (forced turnovers) is better when higher (high in Red, low in Blue).
+    """
+    if not pd.api.types.is_numeric_dtype(column) or column.name in ["Team", "Escut", "Week"]:
+        return [''] * len(column)
+        
+    mean = column.mean()
+    std = column.std()
+    if pd.isna(std) or std == 0:
+        return [''] * len(column)
+        
+    # Columnes on un valor més baix del rival és millor per a la teva defensa
+    lower_is_better = column.name in ["OERcal", "eFG%", "ORB%cal", "FTR"]
+    
+    styles = []
+    for val in column:
+        if pd.isna(val):
+            styles.append('')
+        elif val > mean + 1.2 * std:
+            if lower_is_better:
+                # Alt és DOLENT per a la defensa (Blau)
+                styles.append('background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;')
+            else:
+                # Alt és BO per a la defensa (Vermell, ex: forçar pèrdues)
+                styles.append('background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;')
+        elif val < mean - 1.2 * std:
+            if lower_is_better:
+                # Baix és BO per a la defensa (Vermell, ex: permetre pocs punts o tirs)
+                styles.append('background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;')
+            else:
+                # Baix és DOLENT per a la defensa (Blau)
+                styles.append('background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;')
         else:
             styles.append('')
     return styles
@@ -591,8 +639,8 @@ elif view == "Acumulats Lliga":
             
             with tab_off:
                 st.write("Mètriques Ofensives dels Equips recalculades en viu (Dades Equips)")
-                # canvi: Encadenem l'aplicació del detector d'outliers dinàmic per a Atac
-                styled_offense = offense_df[view_off_cols].sort_values("OERcal", ascending=False).style.format(precision=2).apply(highlight_outliers)
+                # canvi: Enllaçat al mètode d'Atac d' alta precisió
+                styled_offense = offense_df[view_off_cols].sort_values("OERcal", ascending=False).style.format(precision=2).apply(highlight_offense_outliers)
                 st.dataframe(
                     styled_offense, 
                     use_container_width=False, 
@@ -602,8 +650,8 @@ elif view == "Acumulats Lliga":
                 
             with tab_def:
                 st.write("Mètriques Defensives dels Rivals recalculades en viu (Dades Rivals)")
-                # canvi: Encadenem l'aplicació del detector d'outliers dinàmic per a Defensa
-                styled_defense = defense_df[view_def_cols].sort_values("DERcal", ascending=True).style.format(precision=2).apply(highlight_outliers)
+                # canvi: Enllaçat al mètode de Defensa d' alta precisió
+                styled_defense = defense_df[view_def_cols].sort_values("DERcal", ascending=True).style.format(precision=2).apply(highlight_defense_outliers)
                 st.dataframe(
                     styled_defense, 
                     use_container_width=False, 
