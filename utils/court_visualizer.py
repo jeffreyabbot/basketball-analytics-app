@@ -274,7 +274,7 @@ def draw_team_seasonal_zone_charts(offense_df, selected_team, league_pps=0.95):
     ))
     fig_pps.add_vline(x=league_pps, line_dash="dash", line_color="orange", annotation_text=f"Mitjana de la Lliga ({league_pps:.2f} PPS)", annotation_position="top right")
     fig_pps.update_layout(
-        title=f"Eficiència de Tir Miga (PPS) - {selected_team}",
+        title=f"Eficiència de Tir (PPS) - {selected_team}",
         xaxis=dict(title="Punts per llançament (PPS)", showgrid=True, range=[0.0, 3.0]),
         yaxis=dict(autorange="reversed"),
         height=380,
