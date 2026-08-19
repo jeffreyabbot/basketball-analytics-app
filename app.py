@@ -117,14 +117,14 @@ def highlight_offense_outliers(column):
     for val in column:
         if pd.isna(val):
             styles.append('')
-        elif val > mean + 1.2 * std:
+        elif val > mean + 0.8 * std:
             if lower_is_better:
                 # Alt és DOLENT (Blau)
                 styles.append('background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;')
             else:
                 # Alt és BO (Vermell)
                 styles.append('background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;')
-        elif val < mean - 1.2 * std:
+        elif val < mean - 0.8 * std:
             if lower_is_better:
                 # Baix és BO (Vermell)
                 styles.append('background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;')
@@ -156,7 +156,7 @@ def highlight_defense_outliers(column):
     for val in column:
         if pd.isna(val):
             styles.append('')
-        elif val > mean + 1.2 * std:
+        elif val > mean + 0.8 * std:
             if lower_is_better:
                 # Alt és DOLENT per a la defensa (Blau)
                 styles.append('background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;')
