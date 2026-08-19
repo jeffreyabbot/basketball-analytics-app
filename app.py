@@ -578,9 +578,43 @@ elif view == "Acumulats Lliga":
                 )
                 
             with tab_chart:
-                st.write("Gràfic d'Anàlisi Dinàmica de la Lliga (Exclou partits i veu els canvis en directe)")
+                st.write("Gràfic d'Anàlisi Dinàmica de la Lliga (Exclou partits, destaca rivals i veu els canvis en directe)")
                 
+                # Merge offense and defense to get complete metrics
                 league_df = offense_df.merge(defense_df, on="Team", suffixes=("_Off", "_Def"))
+                
+                # canvi: Mètode programàtic d'alta visibilitat per destacar equips triats per l'staff
+                st.write("### Opcions de personalització del gràfic")
+                teams_list_scat = sorted(list(league_df["Team"].unique()))
+                
+                # Selector dinàmic de destacats
+                highlight_sel = st.multiselect(
+                    "Selecciona un o varis equips per destacar al gràfic (es pintaran en taronja i es faran més grans)",
+                    teams_list_scat,
+                    default=[]
+                )
+                
+                # Mapegem les mides i els colors en viu de fons segons la selecció d'staff
+                def get_scat_visual_profile(row):
+                    if row["Team"] in highlight_sel:
+                        return "Destacat", 16  # Color taronja i mida gran (16px)
+                    else:
+                        return "Resta de la Lliga", 10 # Color gris i mida petita (10px)
+                        
+                if highlight_sel:
+                    league_df[["Visual_Group", "Visual_Size"]] = league_df.apply(
+                        lambda r: pd.Series(get_scat_visual_profile(r)), axis=1
+                    )
+                    color_map = {
+                        "Destacat": CB_ORANGE,
+                        "Resta de la Lliga": "rgba(180, 180, 180, 0.55)" # Gris transparent per al contrast
+                    }
+                else:
+                    league_df["Visual_Group"] = "Equips de la Lliga"
+                    league_df["Visual_Size"] = 12
+                    color_map = {
+                        "Equips de la Lliga": CB_BLUE
+                    }
                 
                 x_labels = {
                     "OERcal_Off": "Ràting Ofensiu (OER)",
@@ -594,7 +628,7 @@ elif view == "Acumulats Lliga":
                     "DERcal_Off": "Ràting Defensiu (DER)",
                     "eFG%_Def": "eFG% Defensiu (Rival eFG%)",
                     "TOV%cal_Def": "Ràtio de Pèrdues Defensiu (Rival TO%)",
-                    "ORB%cal_Def": "Rebot Ofensiu Rival % (Rival ORB%)",
+                    "ORB%cal_Def": "Opponent Rebot Ofensiu % (Rival ORB%)",
                     "FTR_Def": "Ràtio de Tirs Lliures Defensiu (Rival FTR)"
                 }
                 
@@ -603,13 +637,15 @@ elif view == "Acumulats Lliga":
                     x_metric = st.selectbox(
                         "Eix X (Mètrica Ofensiva)", 
                         list(x_labels.keys()),
-                        format_func=lambda x: x_labels[x]
+                        format_func=lambda x: x_labels[x],
+                        key="league_x_selector"
                     )
                 with col_scat2:
                     y_metric = st.selectbox(
                         "Eix Y (Mètrica Defensiva)", 
                         list(y_labels.keys()),
-                        format_func=lambda y: y_labels[y]
+                        format_func=lambda y: y_labels[y],
+                        key="league_y_selector"
                     )
                     
                 mean_x = league_df[x_metric].mean()
@@ -625,11 +661,17 @@ elif view == "Acumulats Lliga":
                 else:
                     y_range = [mean_y - max_dev_y * 1.15, mean_y + max_dev_y * 1.15]
                 
+                # canvi: Afegit text='Team' per pintar els noms dels equips directament al costat dels punts
                 fig_scat = px.scatter(
                     league_df,
                     x=x_metric,
                     y=y_metric,
                     hover_name="Team",
+                    text="Team", 
+                    color="Visual_Group",
+                    color_discrete_map=color_map,
+                    size="Visual_Size",
+                    size_max=16,
                     title="Gràfic de Dispersió Comparatiu de la Lliga",
                     labels={
                         "OERcal_Off": "Ràting Ofensiu (OER)",
@@ -642,8 +684,13 @@ elif view == "Acumulats Lliga":
                         "ORB%cal_Def": "Rebot Ofensiu Rival %",
                         "FTR_Off": "FTR",
                         "FTR_Def": "FTR Defensiu"
-                    },
-                    color_discrete_sequence=[CB_BLUE]
+                    }
+                )
+                
+                # canvi: Estilització fina de fons de les etiquetes grises (10px) col·locades al capdamunt dels punts
+                fig_scat.update_traces(
+                    textposition='top center',
+                    textfont=dict(size=10, color="#555555")
                 )
                 
                 fig_scat.update_layout(
@@ -656,7 +703,6 @@ elif view == "Acumulats Lliga":
                 fig_scat.add_hline(y=mean_y, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Def")
                     
                 st.plotly_chart(fig_scat, use_container_width=True)
-                
             with tab_team_profile:
                 scout_teams = sorted(list(offense_df["Team"].unique()))
                 selected_profile_team = st.selectbox("Selecciona l'Equip per analitzar el seu Perfil de Tir", scout_teams)
