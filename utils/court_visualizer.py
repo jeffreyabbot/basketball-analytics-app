@@ -283,3 +283,56 @@ def draw_team_seasonal_zone_charts(offense_df, selected_team, league_pps=0.95):
     )
     
     return fig_vol, fig_pps
+# Afegeix-ho a baix de tot de /utils/court_visualizer.py:
+def draw_scouting_4f_radar_chart(team_name, off_strengths, def_strengths):
+    """
+    Draws a 5-axis polar chart showing a team's offensive and defensive strengths
+    normalized on a 0-100% league percentile scale.
+    """
+    categories = ["General (Rating)", "Eficiència (eFG%)", "Control (TO%)", "Rebot (OR%)", "Lliures (FTR)"]
+    categories_closed = categories + [categories[0]]
+    
+    # Atac: OER, eFG, TOV, ORB, FTR
+    off_closed = list(off_strengths) + [off_strengths[0]]
+    off_closed = [v * 100.0 for v in off_closed]
+    
+    # Defensa: DER, eFG_Def, TOV_Def, ORB_Def, FTR_Def
+    def_closed = list(def_strengths) + [def_strengths[0]]
+    def_closed = [v * 100.0 for v in def_closed]
+    
+    fig = go.Figure()
+    
+    # Atac (Blau)
+    fig.add_trace(go.Scatterpolar(
+        r=off_closed,
+        theta=categories_closed,
+        fill='toself',
+        fillcolor='rgba(31, 119, 180, 0.35)',
+        line=dict(color='#1f77b4', width=3),
+        name="Atac (Ofensiu)"
+    ))
+    
+    # Defensa (Taronja)
+    fig.add_trace(go.Scatterpolar(
+        r=def_closed,
+        theta=categories_closed,
+        fill='toself',
+        fillcolor='rgba(255, 127, 14, 0.35)',
+        line=dict(color='#ff7f0e', width=3),
+        name="Defensa (Defensiu)"
+    ))
+    
+    fig.update_layout(
+        title=f"Perfil Tàctic (Atac vs Defensa) - {team_name}",
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                ticksuffix="%"
+            )
+        ),
+        showlegend=True,
+        height=420,
+        margin=dict(l=40, r=40, t=40, b=40)
+    )
+    return fig

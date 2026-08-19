@@ -27,7 +27,7 @@ from utils.data_loader import (
     get_team_logo_path,
     get_team_logo_base64_url
 )
-from utils.court_visualizer import draw_boxscore_zone_charts, draw_player_radar_charts, draw_team_seasonal_zone_charts
+from utils.court_visualizer import draw_boxscore_zone_charts, draw_player_radar_charts, draw_team_seasonal_zone_charts, draw_scouting_4f_radar_chart
 
 # Page config & Theme (Must be first)
 st.set_page_config(page_title="Anàlisi de Bàsquet - Staff", layout="wide")
@@ -73,7 +73,17 @@ def get_logo_html_centered(logo_path, max_height=80, max_width=120):
         '''
     except Exception:
         return ""
-
+# Afegeix-ho a dalt d'app.py, a sota de la funció get_logo_html_centered:
+def cat_rank(num):
+    """
+    Catalan ranking formatter (e.g. 1er, 2on, 3er, 4rt, 5è).
+    Defined globally to ensure visibility across all views.
+    """
+    if num == 1: return "1er"
+    elif num == 2: return "2on"
+    elif num == 3: return "3er"
+    elif num == 4: return "4rt"
+    else: return f"{num}è"
 def calculate_league_average_pps(raw_games_df):
     if raw_games_df.empty:
         return 0.95
@@ -1047,10 +1057,32 @@ elif view == "Scouting Equips":
                     
             st.markdown("---")
             st.subheader("Comparativa de Rànquings i Eficiència de l'Equip")
-            # canvi: Restaurades les definicions de rànquings ofensius/defensius i càlculs de l'staff
+            # canvi: Recalcul dinàmic de les 20 mètriques de volum i eficiència de lliga per als rànquings reals de Scouting
             off_ranks = offense_df.copy()
             def_ranks = defense_df.copy()
             
+            # Càlcul programàtic dels %T1, %T2, %T3 i volums de tir en ambdues taules d'atac i defensa de fons
+            for df_t in [off_ranks, def_ranks]:
+                fga_2p = df_t["Rim FGA"] + df_t["Paint FGA"] + df_t["MR FGA"]
+                fgm_2p = df_t["Rim FGM"] + df_t["Paint FGM"] + df_t["MR FGM"]
+                df_t["%T2"] = (fgm_2p / fga_2p * 100.0).fillna(0.0)
+                
+                fga_3p = df_t["Cor3 FGA"] + df_t["ATB3 FGA"]
+                fgm_3p = df_t["Cor3 FGM"] + df_t["ATB3 FGM"]
+                df_t["%T3"] = (fgm_3p / fga_3p * 100.0).fillna(0.0)
+                
+                if "FT%" in df_t.columns:
+                    df_t["%T1"] = df_t["FT%"]
+                elif "FT_Pct" in df_t.columns:
+                    df_t["%T1"] = df_t["FT_Pct"]
+                else:
+                    df_t["%T1"] = 72.0
+                    
+                df_t["Us_tir_2"] = fga_2p
+                df_t["Us_Tir_3"] = fga_3p
+                df_t["Pts_T2"] = (2.0 * fgm_2p / fga_2p).fillna(0.0)
+                df_t["Pts_T3"] = (3.0 * fgm_3p / fga_3p).fillna(0.0)
+
             # Offensive Rankings (Higher is better)
             off_ranks["OER_Rank"] = off_ranks["OERcal"].rank(ascending=False, method="min")
             off_ranks["eFG_Rank"] = off_ranks["eFG%"].rank(ascending=False, method="min")
@@ -1058,13 +1090,22 @@ elif view == "Scouting Equips":
             off_ranks["FTR_Rank"] = off_ranks["FTR"].rank(ascending=False, method="min")
             off_ranks["Pace_Rank"] = off_ranks["POSScal"].rank(ascending=False, method="min")
             off_ranks["TOV_Rank"] = off_ranks["TOV%cal"].rank(ascending=True, method="min")
+            off_ranks["T1_Rank"] = off_ranks["%T1"].rank(ascending=False, method="min")
+            off_ranks["T2_Rank"] = off_ranks["%T2"].rank(ascending=False, method="min")
+            off_ranks["T3_Rank"] = off_ranks["%T3"].rank(ascending=False, method="min")
+            off_ranks["Us_T2_Rank"] = off_ranks["Us_tir_2"].rank(ascending=False, method="min")
+            off_ranks["Us_T3_Rank"] = off_ranks["Us_Tir_3"].rank(ascending=False, method="min")
+            off_ranks["Pts_T2_Rank"] = off_ranks["Pts_T2"].rank(ascending=False, method="min")
+            off_ranks["Pts_T3_Rank"] = off_ranks["Pts_T3"].rank(ascending=False, method="min")
             
-            # Defensive Rankings (DER, Opp eFG%, Opp ORB%, Opp FTR lower is better; Opp TO% higher is better)
+            # Defensive Rankings (Lower is better)
             def_ranks["DER_Rank"] = def_ranks["OERcal"].rank(ascending=True, method="min")
             def_ranks["eFG_Def_Rank"] = def_ranks["eFG%"].rank(ascending=True, method="min")
             def_ranks["TOV_Def_Rank"] = def_ranks["TOV%cal"].rank(ascending=False, method="min")
             def_ranks["ORB_Def_Rank"] = def_ranks["ORB%cal"].rank(ascending=True, method="min")
             def_ranks["FTR_Def_Rank"] = def_ranks["FTR"].rank(ascending=True, method="min")
+            def_ranks["Pts_T2_Def_Rank"] = def_ranks["Pts_T2"].rank(ascending=True, method="min")
+            def_ranks["Pts_T3_Def_Rank"] = def_ranks["Pts_T3"].rank(ascending=True, method="min")
             
             # Cerca de dades reals i rànquings per a tots dos equips
             def get_team_scout_stats(team_name):
@@ -1081,21 +1122,34 @@ elif view == "Scouting Equips":
                     "eFG_Def": (t_def["eFG%"], int(t_def["eFG_Def_Rank"])),
                     "TOV_Def": (t_def["TOV%cal"], int(t_def["TOV_Def_Rank"])),
                     "ORB_Def": (t_def["ORB%cal"], int(t_def["ORB_Def_Rank"])),
-                    "FTR_Def": (t_def["FTR"], int(t_def["FTR_Def_Rank"]))
+                    "FTR_Def": (t_def["FTR"], int(t_def["FTR_Def_Rank"])),
+                    "T1": (t_off["%T1"], int(t_off["T1_Rank"])),
+                    "T2": (t_off["%T2"], int(t_off["T2_Rank"])),
+                    "T3": (t_off["%T3"], int(t_off["T3_Rank"])),
+                    "Us_T2": (t_off["Us_tir_2"], int(t_off["Us_T2_Rank"])),
+                    "Us_T3": (t_off["Us_Tir_3"], int(t_off["Us_T3_Rank"])),
+                    "Pts_T2": (t_off["Pts_T2"], int(t_off["Pts_T2_Rank"])),
+                    "Pts_T3": (t_off["Pts_T3"], int(t_off["Pts_T3_Rank"])),
+                    "Pts_T2_Def": (t_def["Pts_T2"], int(t_def["Pts_T2_Def_Rank"])),
+                    "Pts_T3_Def": (t_def["Pts_T3"], int(t_def["Pts_T3_Def_Rank"]))
                 }
                 
             stats_A = get_team_scout_stats(team_A)
             stats_B = get_team_scout_stats(team_B)
             
-            # canvi: Funció programàtica per calcular la força de fons (0 a 1) sobre els rànquings reals restaurats
+            # canvi: Funció programàtica per normalitzar la força relativa (0 a 1) sobre totes les 20 noves mètriques
             def get_normalized_strength(key, val, off_df, def_df):
-                is_def_metric = key in ["DER", "eFG_Def", "TOV_Def", "ORB_Def", "FTR_Def"]
+                is_def_metric = key in ["DER", "eFG_Def", "TOV_Def", "ORB_Def", "FTR_Def", "Pts_T2_Def", "Pts_T3_Def"]
                 df_target = def_df if is_def_metric else off_df
                 
                 col_map = {
-                    "OER": "OERcal", "DER": "DERcal", "Pace": "POSScal",
+                    "OER": "OERcal", "DER": "OERcal", "Pace": "POSScal",
                     "eFG": "eFG%", "TOV": "TOV%cal", "ORB": "ORB%cal", "FTR": "FTR",
-                    "eFG_Def": "eFG%", "TOV_Def": "TOV%cal", "ORB_Def": "ORB%cal", "FTR_Def": "FTR"
+                    "eFG_Def": "eFG%", "TOV_Def": "TOV%cal", "ORB_Def": "ORB%cal", "FTR_Def": "FTR",
+                    "T1": "%T1", "T2": "%T2", "T3": "%T3",
+                    "Us_T2": "Us_tir_2", "Us_T3": "Us_Tir_3",
+                    "Pts_T2": "Pts_T2", "Pts_T3": "Pts_T3",
+                    "Pts_T2_Def": "Pts_T2", "Pts_T3_Def": "Pts_T3"
                 }
                 col_name = col_map[key]
                 
@@ -1105,7 +1159,7 @@ elif view == "Scouting Equips":
                 if max_v == min_v:
                     return 0.5
                     
-                lower_is_better = key in ["DER", "TOV", "eFG_Def", "ORB_Def", "FTR_Def"]
+                lower_is_better = key in ["DER", "TOV", "eFG_Def", "ORB_Def", "FTR_Def", "Pts_T2_Def", "Pts_T3_Def"]
                 
                 if lower_is_better:
                     norm = (max_v - val) / (max_v - min_v)
@@ -1114,27 +1168,30 @@ elif view == "Scouting Equips":
                 return max(0.0, min(1.0, float(norm)))
 
             mirror_data = []
+            # canvi: Llistat actualitzat a les 20 noves mètriques de volum i % que demana l'staff
             metrics_mapping = [
+                ("Pace", "Ritme (Pace)", "{:.1f}"),
                 ("OER", "Ràting Ofensiu (OER)", "{:.2f}"),
                 ("DER", "Ràting Defensiu (DER)", "{:.2f}"),
-                ("Pace", "Possessions (Pace)", "{:.1f}"),
                 ("eFG", "eFG% Ofensiu", "{:.2f}%"),
-                ("eFG_Def", "eFG% Defensiu (Rival eFG%)", "{:.2f}%"),
-                ("TOV", "Pèrdues Ofensiu % (TO%)", "{:.2f}%"),
-                ("TOV_Def", "Pèrdues Defensiu % (Forçades)", "{:.2f}%"),
-                ("ORB", "Rebot Ofensiu % (ORB%)", "{:.2f}%"),
-                ("ORB_Def", "Rebot Defensiu % (Rival ORB%)", "{:.2f}%"),
-                ("FTR", "Ràtio de Tirs Lliures Ofensiu (FTR)", "{:.2f}"),
-                ("FTR_Def", "Ràtio de Tirs Lliures Defensiu (Rival FTR)", "{:.2f}")
+                ("ORB", "Rebot Ofensiu % (OR%)", "{:.2f}%"),
+                ("TOV", "Pèrdues Ofensiu % (TOV%)", "{:.2f}%"),
+                ("FTR", "Ràtio de Lliures Atac (FTR)", "{:.2f}"),
+                ("eFG_Def", "eFG% Defensiu (Rival)", "{:.2f}%"),
+                ("ORB_Def", "Rebot Defensiu % (Rival OR%)", "{:.2f}%"),
+                ("TOV_Def", "Pèrdues Defensiu % (TO% Rival)", "{:.2f}%"),
+                ("FTR_Def", "Ràtio de Lliures Defensiu (Rival FTR)", "{:.2f}"),
+                ("T1", "Percentatge Tirs Lliures (%T1)", "{:.2f}%"),
+                ("T2", "Percentatge Tirs de 2 (%T2)", "{:.2f}%"),
+                ("T3", "Percentatge Tirs de 3 (%T3)", "{:.2f}%"),
+                ("Us_T2", "Volum Tirs de 2 (Us tir 2)", "{:.1f}/p"),
+                ("Us_T3", "Volum Tirs de 3 (Us Tir 3)", "{:.1f}/p"),
+                ("Pts_T2", "Punts per llançament 2P (Pts/T2)", "{:.2f} PPS"),
+                ("Pts_T3", "Punts per llançament 3P (Pts/T3)", "{:.2f} PPS"),
+                ("Pts_T2_Def", "PPS permesos de 2P (Pts T2 riv)", "{:.2f} PPS"),
+                ("Pts_T3_Def", "PPS permesos de 3P (Pts T3 riv)", "{:.2f} PPS")
             ]
             
-            def cat_rank(num):
-                if num == 1: return "1er"
-                elif num == 2: return "2on"
-                elif num == 3: return "3er"
-                elif num == 4: return "4rt"
-                else: return f"{num}è"
-                
             for key, name, fmt in metrics_mapping:
                 val_A, rank_A = stats_A[key]
                 val_B, rank_B = stats_B[key]
@@ -1153,22 +1210,45 @@ elif view == "Scouting Equips":
                     "Fortalesa (B)": strength_B
                 })
                 
-            # canvi: Nova taula en mirall de 5 columnes amb barres de progrés ampliades (mida medium) i alçada de 480px per evitar scrollbars
+            # Taula en mirall de 5 columnes per a les 20 dades d'escut
             mirror_df = pd.DataFrame(mirror_data)
             mirror_col_config = {
-                "Fortalesa (A)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="medium"),
+                "Fortalesa (A)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="small"),
                 f"Rànquing ({team_A})": st.column_config.TextColumn(f"Rànquing ({team_A})", width=140),
-                "Mètrica de Lliga": st.column_config.TextColumn("Mètrica de Lliga", width=260),
+                "Mètrica de Lliga": st.column_config.TextColumn("Mètrica de Lliga", width=220),
                 f"Rànquing ({team_B})": st.column_config.TextColumn(f"Rànquing ({team_B})", width=140),
-                "Fortalesa (B)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="medium")
+                "Fortalesa (B)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="small")
             }
+            # canvi: Taula ampliada a 730px d'alçada per mostrar perfectament les 20 files de dades cara a cara sense barres de desplaçament
             st.dataframe(
                 mirror_df,
                 use_container_width=False,
                 column_config=mirror_col_config,
                 hide_index=True,
-                height=480 # canvi: Alçada forçada a 480px per mostrar les 11 files netes sense barra de desplaçament vertical
+                height=730
             )
+            
+            # canvi: DOBLE GRÀFIC DE RÀDAR TÀCTIC DELS 4 FACTORS EN PARAL·LEL (Sota la taula)
+            st.markdown("---")
+            st.subheader("📊 Ràdars Tàctics de l'Atac vs Defensa (4 Factors)")
+            st.write("Analitza la identitat tàctica d'ambdós rivals: la línia blava representa la força de fons ofensiva i la taronja la seva fortalesa defensiva en el rànquing de lliga.")
+            
+            # Preparem els talls de fons de forces per a cada ràdar
+            # Mètriques: OER/DER, eFG, TOV, ORB, FTR
+            strengths_A_off = [get_normalized_strength("OER", stats_A["OER"][0], off_ranks, def_ranks), get_normalized_strength("eFG", stats_A["eFG"][0], off_ranks, def_ranks), get_normalized_strength("TOV", stats_A["TOV"][0], off_ranks, def_ranks), get_normalized_strength("ORB", stats_A["ORB"][0], off_ranks, def_ranks), get_normalized_strength("FTR", stats_A["FTR"][0], off_ranks, def_ranks)]
+            strengths_A_def = [get_normalized_strength("DER", stats_A["DER"][0], off_ranks, def_ranks), get_normalized_strength("eFG_Def", stats_A["eFG_Def"][0], off_ranks, def_ranks), get_normalized_strength("TOV_Def", stats_A["TOV_Def"][0], off_ranks, def_ranks), get_normalized_strength("ORB_Def", stats_A["ORB_Def"][0], off_ranks, def_ranks), get_normalized_strength("FTR_Def", stats_A["FTR_Def"][0], off_ranks, def_ranks)]
+            
+            strengths_B_off = [get_normalized_strength("OER", stats_B["OER"][0], off_ranks, def_ranks), get_normalized_strength("eFG", stats_B["eFG"][0], off_ranks, def_ranks), get_normalized_strength("TOV", stats_B["TOV"][0], off_ranks, def_ranks), get_normalized_strength("ORB", stats_B["ORB"][0], off_ranks, def_ranks), get_normalized_strength("FTR", stats_B["FTR"][0], off_ranks, def_ranks)]
+            strengths_B_def = [get_normalized_strength("DER", stats_B["DER"][0], off_ranks, def_ranks), get_normalized_strength("eFG_Def", stats_B["eFG_Def"][0], off_ranks, def_ranks), get_normalized_strength("TOV_Def", stats_B["TOV_Def"][0], off_ranks, def_ranks), get_normalized_strength("ORB_Def", stats_B["ORB_Def"][0], off_ranks, def_ranks), get_normalized_strength("FTR_Def", stats_B["FTR_Def"][0], off_ranks, def_ranks)]
+            
+            fig_rad_A = draw_scouting_4f_radar_chart(team_A, strengths_A_off, strengths_A_def)
+            fig_rad_B = draw_scouting_4f_radar_chart(team_B, strengths_B_off, strengths_B_def)
+            
+            col_scout_rad1, col_scout_rad2 = st.columns(2)
+            with col_scout_rad1:
+                st.plotly_chart(fig_rad_A, use_container_width=True)
+            with col_scout_rad2:
+                st.plotly_chart(fig_rad_B, use_container_width=True)
             
             st.markdown("---")
             st.subheader("Anàlisi Comparatiu per Jugador (Volum i PPS per Trams)")
