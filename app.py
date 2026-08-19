@@ -1210,22 +1210,21 @@ elif view == "Scouting Equips":
                     "Fortalesa (B)": strength_B
                 })
                 
-            # Taula en mirall de 5 columnes per a les 20 dades d'escut
+            # canvi: Nova taula en mirall de 5 columnes ampliada (mida de columnes gran i alçada de 760px per evitar qualsevol tall o scrollbar)
             mirror_df = pd.DataFrame(mirror_data)
             mirror_col_config = {
-                "Fortalesa (A)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="small"),
-                f"Rànquing ({team_A})": st.column_config.TextColumn(f"Rànquing ({team_A})", width=140),
-                "Mètrica de Lliga": st.column_config.TextColumn("Mètrica de Lliga", width=220),
-                f"Rànquing ({team_B})": st.column_config.TextColumn(f"Rànquing ({team_B})", width=140),
-                "Fortalesa (B)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="small")
+                "Fortalesa (A)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="medium"),
+                f"Rànquing ({team_A})": st.column_config.TextColumn(f"Rànquing ({team_A})", width=150),
+                "Mètrica de Lliga": st.column_config.TextColumn("Mètrica de Lliga", width=300), # canvi: Ampliat de 220 a 300 per evitar talls de text de mètriques llargues
+                f"Rànquing ({team_B})": st.column_config.TextColumn(f"Rànquing ({team_B})", width=150),
+                "Fortalesa (B)": st.column_config.ProgressColumn("Fortalesa", min_value=0.0, max_value=1.0, width="medium")
             }
-            # canvi: Taula ampliada a 730px d'alçada per mostrar perfectament les 20 files de dades cara a cara sense barres de desplaçament
             st.dataframe(
                 mirror_df,
                 use_container_width=False,
                 column_config=mirror_col_config,
                 hide_index=True,
-                height=730
+                height=760 # canvi: Ampliat a 760px per contenir perfectament les 20 files de dades de l'staff cara a cara
             )
             
             # canvi: DOBLE GRÀFIC DE RÀDAR TÀCTIC DELS 4 FACTORS EN PARAL·LEL (Sota la taula)
