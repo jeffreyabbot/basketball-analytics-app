@@ -94,7 +94,37 @@ def calculate_league_average_pps(raw_games_df):
         return 0.95
     except Exception:
         return 0.95
-
+# Afegeix-ho a dalt d'app.py, a sota del mòdul de calculate_league_average_pps:
+def highlight_outliers(column):
+    """
+    Pandas styler function that dynamically highlights statistical outliers in each column:
+    - High outliers (> mean + 1.2*std) are highlighted in soft translucent red/coral.
+    - Low outliers (< mean - 1.2*std) are highlighted in soft translucent blue/teal.
+    """
+    # Apliquem només a columnes numèriques, ignorant l'escut, el nom o els textos
+    if not pd.api.types.is_numeric_dtype(column) or column.name in ["Team", "Escut", "Week"]:
+        return [''] * len(column)
+        
+    mean = column.mean()
+    std = column.std()
+    
+    # Control de seguretat si no hi ha prou variància
+    if pd.isna(std) or std == 0:
+        return [''] * len(column)
+        
+    styles = []
+    for val in column:
+        if pd.isna(val):
+            styles.append('')
+        elif val > mean + 1.2 * std:
+            # Vermell corporatiu suau amb text en negreta per als valors alts d' elit
+            styles.append('background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;')
+        elif val < mean - 1.2 * std:
+            # Blau corporatiu suau amb text en negreta per als valors baixos desajustats
+            styles.append('background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;')
+        else:
+            styles.append('')
+    return styles
 # --- Rest of the application ---
 
 RAW_DIR = "data/raw"
@@ -561,8 +591,10 @@ elif view == "Acumulats Lliga":
             
             with tab_off:
                 st.write("Mètriques Ofensives dels Equips recalculades en viu (Dades Equips)")
+                # canvi: Encadenem l'aplicació del detector d'outliers dinàmic per a Atac
+                styled_offense = offense_df[view_off_cols].sort_values("OERcal", ascending=False).style.format(precision=2).apply(highlight_outliers)
                 st.dataframe(
-                    offense_df[view_off_cols].sort_values("OERcal", ascending=False).style.format(precision=2), 
+                    styled_offense, 
                     use_container_width=False, 
                     height=600,
                     column_config=league_col_config
@@ -570,8 +602,10 @@ elif view == "Acumulats Lliga":
                 
             with tab_def:
                 st.write("Mètriques Defensives dels Rivals recalculades en viu (Dades Rivals)")
+                # canvi: Encadenem l'aplicació del detector d'outliers dinàmic per a Defensa
+                styled_defense = defense_df[view_def_cols].sort_values("DERcal", ascending=True).style.format(precision=2).apply(highlight_outliers)
                 st.dataframe(
-                    defense_df[view_def_cols].sort_values("DERcal", ascending=True).style.format(precision=2), 
+                    styled_defense, 
                     use_container_width=False, 
                     height=600,
                     column_config=league_col_config
