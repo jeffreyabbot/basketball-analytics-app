@@ -1437,7 +1437,99 @@ elif view == "Scouting Equips":
                             value=f"{net_impact:+.1f}",
                             help=f"Diferencial net de l'equip amb el jugador a pista vs. a la banqueta. Càlcul: {plus_on:+.1f} - ({plus_off:+.1f}) = {net_impact:+.1f}"
                         )
+                    # canvi: Funció d' estil programàtica específica per a la fila de Diferencial NET de fons On-Off
+                    def highlight_on_off_profile_diff(df):
+                        style_df = pd.DataFrame('', index=df.index, columns=df.columns)
+                        net_idx = 2 # L' índex 2 correspon a la fila "Diferencial (NET)"
                         
+                        # Regles de mètriques: True significa que un valor positiu és BO (vermell), False que un valor baix/negatiu és BO (vermell)
+                        rules = {
+                            "off eFG%": True,
+                            "def eFG%": False,    # Un eFG% rival més baix a pista és millor (defensa)
+                            "to%": False,         # Un TO% d'atac més baix a pista és millor (control)
+                            "to%ag": True,        # Més pèrdues forçades al rival és millor
+                            "RO/tram": True,
+                            "RO Ag/tram": False,  # Menys rebots ofensius rivals permesos és millor
+                            "RD/tram": True,
+                            "RD Ag/tram": False   # Menys rebots defensius rivals permesos és millor
+                        }
+                        
+                        for col, positive_is_good in rules.items():
+                            if col in df.columns:
+                                val = df.loc[net_idx, col]
+                                if positive_is_good:
+                                    if val > 0:
+                                        style_df.loc[net_idx, col] = 'background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;'
+                                    elif val < 0:
+                                        style_df.loc[net_idx, col] = 'background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;'
+                                else:
+                                    if val < 0:
+                                        style_df.loc[net_idx, col] = 'background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;'
+                                    elif val > 0:
+                                        style_df.loc[net_idx, col] = 'background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;'
+                        return style_df
+
+                    # canvi: Generació i càlcul de les dades del perfil On/Off amb el volum de rebots normalitzat per tram (Fase 3 avançada)
+                    trams_on = len(on_court)
+                    trams_off = len(off_court)
+                    
+                    o_efg_on, d_efg_on, to_on, to_ag_on, ro_on, ro_ag_on, rd_on, rd_ag_on = calculate_combo_stats_metrics(on_court)
+                    o_efg_off, d_efg_off, to_off, to_ag_off, ro_off, ro_ag_off, rd_off, rd_ag_off = calculate_combo_stats_metrics(off_court)
+                    
+                    # Normalitzem els rebots dividint pel número de rotacions (trams) jugats a cada estat
+                    ro_on_s = ro_on / trams_on if trams_on > 0 else 0.0
+                    ro_off_s = ro_off / trams_off if trams_off > 0 else 0.0
+                    ro_ag_on_s = ro_ag_on / trams_on if trams_on > 0 else 0.0
+                    ro_ag_off_s = ro_ag_off / trams_off if trams_off > 0 else 0.0
+                    
+                    rd_on_s = rd_on / trams_on if trams_on > 0 else 0.0
+                    rd_off_s = rd_off / trams_off if trams_off > 0 else 0.0
+                    rd_ag_on_s = rd_ag_on / trams_on if trams_on > 0 else 0.0
+                    rd_ag_off_s = rd_ag_off / trams_off if trams_off > 0 else 0.0
+                    
+                    profile_rows = [
+                        {
+                            "Estat": f"A Pista ({player_X})",
+                            "off eFG%": o_efg_on, "def eFG%": d_efg_on,
+                            "to%": to_on, "to%ag": to_ag_on,
+                            "RO/tram": ro_on_s, "RO Ag/tram": ro_ag_on_s,
+                            "RD/tram": rd_on_s, "RD Ag/tram": rd_ag_on_s
+                        },
+                        {
+                            "Estat": "A la Banqueta (Off)",
+                            "off eFG%": o_efg_off, "def eFG%": d_efg_off,
+                            "to%": to_off, "to%ag": to_ag_off,
+                            "RO/tram": ro_off_s, "RO Ag/tram": ro_ag_off_s,
+                            "RD/tram": rd_off_s, "RD Ag/tram": rd_ag_off_s
+                        },
+                        {
+                            "Estat": "Diferencial (NET)",
+                            "off eFG%": o_efg_on - o_efg_off, "def eFG%": d_efg_on - d_efg_off,
+                            "to%": to_on - to_off, "to%ag": to_ag_on - to_ag_off,
+                            "RO/tram": ro_on_s - ro_off_s, "RO Ag/tram": ro_ag_on_s - ro_ag_off_s,
+                            "RD/tram": rd_on_s - rd_off_s, "RD Ag/tram": rd_ag_on_s - rd_ag_off_s
+                        }
+                    ]
+                    
+                    profile_df = pd.DataFrame(profile_rows)
+                    
+                    # Configuració compacta unificada de píxels
+                    profile_config = {
+                        "Estat": st.column_config.TextColumn("Estat", width=180)
+                    }
+                    for col in ["off eFG%", "def eFG%", "to%", "to%ag"]:
+                        profile_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width="small")
+                    for col in ["RO/tram", "RO Ag/tram", "RD/tram", "RD Ag/tram"]:
+                        profile_config[col] = st.column_config.NumberColumn(col, format="%.2f", width="small")
+                        
+                    st.write("")
+                    st.write(f"📊 **Perfil de Rendiment Detallat d'On/Off per a {player_X}:**")
+                    st.dataframe(
+                        profile_df.style.apply(highlight_on_off_profile_diff, axis=None), 
+                        use_container_width=False,
+                        column_config=profile_config,
+                        hide_index=True
+                    )  
                     st.write("")
                     teammate_stats = []
                     for teammate in roster_list:
