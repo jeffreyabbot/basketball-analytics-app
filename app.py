@@ -1514,16 +1514,17 @@ elif view == "Scouting Equips":
                     profile_df = pd.DataFrame(profile_rows)
                     
                     # Configuració compacta unificada de píxels
+                    # canvi: Amplades de píxels ampliades finament perquè els títols en català hi cabin perfectament sense talls de text
                     profile_config = {
-                        "Estat": st.column_config.TextColumn("Estat", width=180),
-                        "off eFG%": st.column_config.NumberColumn("eFG% Atac", format="%.1f%%", width=65),
-                        "def eFG%": st.column_config.NumberColumn("eFG% Def", format="%.1f%%", width=65),
-                        "to%": st.column_config.NumberColumn("Pèrdues %", format="%.1f%%", width=65),
-                        "to%ag": st.column_config.NumberColumn("Pèrd % riv", format="%.1f%%", width=65),
-                        "RO/tram": st.column_config.NumberColumn("RO/tram", format="%.2f", width=55),
-                        "RO Ag/tram": st.column_config.NumberColumn("RO riv/tram", format="%.2f", width=55),
-                        "RD/tram": st.column_config.NumberColumn("RD/tram", format="%.2f", width=55),
-                        "RD Ag/tram": st.column_config.NumberColumn("RD riv/tram", format="%.2f", width=55)
+                        "Estat": st.column_config.TextColumn("Estat", width=160),
+                        "off eFG%": st.column_config.NumberColumn("eFG% Atac", format="%.1f%%", width=95),
+                        "def eFG%": st.column_config.NumberColumn("eFG% Def", format="%.1f%%", width=85),
+                        "to%": st.column_config.NumberColumn("Pèrdues %", format="%.1f%%", width=95),
+                        "to%ag": st.column_config.NumberColumn("Pèrd % riv", format="%.1f%%", width=95),
+                        "RO/tram": st.column_config.NumberColumn("RO/tram", format="%.2f", width=75),
+                        "RO Ag/tram": st.column_config.NumberColumn("RO riv/tram", format="%.2f", width=95),
+                        "RD/tram": st.column_config.NumberColumn("RD/tram", format="%.2f", width=75),
+                        "RD Ag/tram": st.column_config.NumberColumn("RD riv/tram", format="%.2f", width=95)
                     }
                     
                     st.write("")
@@ -1580,19 +1581,20 @@ elif view == "Scouting Equips":
                         col_best, col_worst = st.columns(2)
                         
                         # canvi: Forçades les amplades de columna en píxels reals per evitar que s'estirin asimètricament si hi ha cel·les buides
+                        # canvi: Amplades de píxels ampliades finament perquè els títols en català de les dues taules de parelles no es tallin
                         t_config = {
-                            "Company": st.column_config.TextColumn("Company", width=240),
-                            "+/- Acumulat": st.column_config.NumberColumn("+/- Acum", width=65),
-                            "Partits": st.column_config.NumberColumn("Partits", width=55),
-                            "Trams": st.column_config.NumberColumn("Trams", width=55),
-                            "off eFG%": st.column_config.NumberColumn("eFG% Atac", format="%.1f%%", width=65),
-                            "def eFG%": st.column_config.NumberColumn("eFG% Def", format="%.1f%%", width=65),
-                            "to%": st.column_config.NumberColumn("Pèrdues %", format="%.1f%%", width=65),
-                            "to%ag": st.column_config.NumberColumn("Pèrd % riv", format="%.1f%%", width=65),
-                            "ro": st.column_config.NumberColumn("RO", width=55),
-                            "ro Ag": st.column_config.NumberColumn("RO riv", width=55),
-                            "rd": st.column_config.NumberColumn("RD", width=55),
-                            "rd ag": st.column_config.NumberColumn("RD riv", width=55)
+                            "Company": st.column_config.TextColumn("Company", width=220),
+                            "+/- Acumulat": st.column_config.NumberColumn("+/-", width=65), # canvi: Títol escurçat a "+/-" per estalviar espai
+                            "Partits": st.column_config.NumberColumn("Partits", width=60),
+                            "Trams": st.column_config.NumberColumn("Trams", width=60),
+                            "off eFG%": st.column_config.NumberColumn("eFG% Atac", format="%.1f%%", width=95),
+                            "def eFG%": st.column_config.NumberColumn("eFG% Def", format="%.1f%%", width=85),
+                            "to%": st.column_config.NumberColumn("Pèrdues %", format="%.1f%%", width=95),
+                            "to%ag": st.column_config.NumberColumn("Pèrd % riv", format="%.1f%%", width=95),
+                            "ro": st.column_config.NumberColumn("RO", width=50),
+                            "ro Ag": st.column_config.NumberColumn("RO riv", width=65),
+                            "rd": st.column_config.NumberColumn("RD", width=50),
+                            "rd ag": st.column_config.NumberColumn("RD riv", width=65)
                         }
                         # canvi: Aplicació del format de decimals i l'estilador de colors d'outliers a les dues taules de parelles
                         with col_best:
