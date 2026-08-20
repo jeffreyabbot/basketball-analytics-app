@@ -1515,13 +1515,17 @@ elif view == "Scouting Equips":
                     
                     # Configuració compacta unificada de píxels
                     profile_config = {
-                        "Estat": st.column_config.TextColumn("Estat", width=180)
+                        "Estat": st.column_config.TextColumn("Estat", width=180),
+                        "off eFG%": st.column_config.NumberColumn("eFG% Atac", format="%.1f%%", width=65),
+                        "def eFG%": st.column_config.NumberColumn("eFG% Def", format="%.1f%%", width=65),
+                        "to%": st.column_config.NumberColumn("Pèrdues %", format="%.1f%%", width=65),
+                        "to%ag": st.column_config.NumberColumn("Pèrd % riv", format="%.1f%%", width=65),
+                        "RO/tram": st.column_config.NumberColumn("RO/tram", format="%.2f", width=55),
+                        "RO Ag/tram": st.column_config.NumberColumn("RO riv/tram", format="%.2f", width=55),
+                        "RD/tram": st.column_config.NumberColumn("RD/tram", format="%.2f", width=55),
+                        "RD Ag/tram": st.column_config.NumberColumn("RD riv/tram", format="%.2f", width=55)
                     }
-                    for col in ["off eFG%", "def eFG%", "to%", "to%ag"]:
-                        profile_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width=65)
-                    for col in ["RO/tram", "RO Ag/tram", "RD/tram", "RD Ag/tram"]:
-                        profile_config[col] = st.column_config.NumberColumn(col, format="%.2f", width=55)
-                        
+                    
                     st.write("")
                     st.write(f"📊 **Perfil de Rendiment Detallat d'On/Off per a {player_X}:**")
                     st.dataframe(
@@ -1529,7 +1533,7 @@ elif view == "Scouting Equips":
                         use_container_width=False,
                         column_config=profile_config,
                         hide_index=True
-                    )  
+                    ) 
                     st.write("")
                     teammate_stats = []
                     for teammate in roster_list:
@@ -1580,13 +1584,16 @@ elif view == "Scouting Equips":
                             "Company": st.column_config.TextColumn("Company", width=240),
                             "+/- Acumulat": st.column_config.NumberColumn("+/- Acum", width=65),
                             "Partits": st.column_config.NumberColumn("Partits", width=55),
-                            "Trams": st.column_config.NumberColumn("Trams", width=55)
+                            "Trams": st.column_config.NumberColumn("Trams", width=55),
+                            "off eFG%": st.column_config.NumberColumn("eFG% Atac", format="%.1f%%", width=65),
+                            "def eFG%": st.column_config.NumberColumn("eFG% Def", format="%.1f%%", width=65),
+                            "to%": st.column_config.NumberColumn("Pèrdues %", format="%.1f%%", width=65),
+                            "to%ag": st.column_config.NumberColumn("Pèrd % riv", format="%.1f%%", width=65),
+                            "ro": st.column_config.NumberColumn("RO", width=55),
+                            "ro Ag": st.column_config.NumberColumn("RO riv", width=55),
+                            "rd": st.column_config.NumberColumn("RD", width=55),
+                            "rd ag": st.column_config.NumberColumn("RD riv", width=55)
                         }
-                        for col in ["off eFG%", "def eFG%", "to%", "to%ag"]:
-                            t_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width=65)
-                        for col in ["ro", "ro Ag", "rd", "rd ag"]:
-                            t_config[col] = st.column_config.NumberColumn(col, width=55)
-                            
                         # canvi: Aplicació del format de decimals i l'estilador de colors d'outliers a les dues taules de parelles
                         with col_best:
                             st.write(f"👍 **Millors companyies per a {player_X}**")
