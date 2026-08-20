@@ -183,14 +183,14 @@ def highlight_defense_outliers(column):
         else:
             styles.append('')
     return styles
-# Afegeix-ho a dalt d'app.py, a sota d'highlight_defense_outliers:
 def highlight_teammate_outliers(column):
     """
     Styler calibrated specifically for the Teammate Leaderboard columns.
-    - +/- Acumulat, off eFG%, to%ag, ro, rd: higher is better (high in Red, low in Blue).
-    - def eFG%, to%, ro Ag, rd ag: lower is better (low in Red, high in Blue).
+    Restricted strictly to percentage columns (eFG%, TO%) to ensure statistical 
+    fairness, as counting stats (Rebounds) depend heavily on total minutes played.
     """
-    if not pd.api.types.is_numeric_dtype(column) or column.name in ["Company", "Partits", "Trams"]:
+    # canvi: Apliquem l'estilador estrictament i única a les mètriques d'eficiència (%) de parella
+    if column.name not in ["off eFG%", "def eFG%", "to%", "to%ag"]:
         return [''] * len(column)
         
     mean = column.mean()
@@ -199,7 +199,7 @@ def highlight_teammate_outliers(column):
         return [''] * len(column)
         
     # Columnes de parella on un valor més baix és millor per al teu equip
-    lower_is_better = column.name in ["def eFG%", "to%", "ro Ag", "rd ag"]
+    lower_is_better = column.name in ["def eFG%", "to%"]
     
     styles = []
     for val in column:
@@ -1473,16 +1473,17 @@ elif view == "Scouting Equips":
                         
                         col_best, col_worst = st.columns(2)
                         
+                        # canvi: Forçades les amplades de columna en píxels reals per evitar que s'estirin asimètricament si hi ha cel·les buides
                         t_config = {
                             "Company": st.column_config.TextColumn("Company", width=240),
-                            "+/- Acumulat": st.column_config.NumberColumn("+/- Acum", width="small"),
-                            "Partits": st.column_config.NumberColumn("Partits", width="small"),
-                            "Trams": st.column_config.NumberColumn("Trams", width="small")
+                            "+/- Acumulat": st.column_config.NumberColumn("+/- Acum", width=65),
+                            "Partits": st.column_config.NumberColumn("Partits", width=55),
+                            "Trams": st.column_config.NumberColumn("Trams", width=55)
                         }
                         for col in ["off eFG%", "def eFG%", "to%", "to%ag"]:
-                            t_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width="small")
+                            t_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width=65)
                         for col in ["ro", "ro Ag", "rd", "rd ag"]:
-                            t_config[col] = st.column_config.NumberColumn(col, width="small")
+                            t_config[col] = st.column_config.NumberColumn(col, width=55)
                             
                         # canvi: Aplicació del format de decimals i l'estilador de colors d'outliers a les dues taules de parelles
                         with col_best:
