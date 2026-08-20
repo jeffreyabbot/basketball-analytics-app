@@ -1518,9 +1518,9 @@ elif view == "Scouting Equips":
                         "Estat": st.column_config.TextColumn("Estat", width=180)
                     }
                     for col in ["off eFG%", "def eFG%", "to%", "to%ag"]:
-                        profile_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width="small")
+                        profile_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width=65)
                     for col in ["RO/tram", "RO Ag/tram", "RD/tram", "RD Ag/tram"]:
-                        profile_config[col] = st.column_config.NumberColumn(col, format="%.2f", width="small")
+                        profile_config[col] = st.column_config.NumberColumn(col, format="%.2f", width=55)
                         
                     st.write("")
                     st.write(f"📊 **Perfil de Rendiment Detallat d'On/Off per a {player_X}:**")
