@@ -183,6 +183,45 @@ def highlight_defense_outliers(column):
         else:
             styles.append('')
     return styles
+# Afegeix-ho a dalt d'app.py, a sota d'highlight_defense_outliers:
+def highlight_teammate_outliers(column):
+    """
+    Styler calibrated specifically for the Teammate Leaderboard columns.
+    - +/- Acumulat, off eFG%, to%ag, ro, rd: higher is better (high in Red, low in Blue).
+    - def eFG%, to%, ro Ag, rd ag: lower is better (low in Red, high in Blue).
+    """
+    if not pd.api.types.is_numeric_dtype(column) or column.name in ["Company", "Partits", "Trams"]:
+        return [''] * len(column)
+        
+    mean = column.mean()
+    std = column.std()
+    if pd.isna(std) or std == 0:
+        return [''] * len(column)
+        
+    # Columnes de parella on un valor més baix és millor per al teu equip
+    lower_is_better = column.name in ["def eFG%", "to%", "ro Ag", "rd ag"]
+    
+    styles = []
+    for val in column:
+        if pd.isna(val):
+            styles.append('')
+        elif val > mean + 0.8 * std:
+            if lower_is_better:
+                # Alt és DOLENT (Blau)
+                styles.append('background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;')
+            else:
+                # Alt és BO (Vermell)
+                styles.append('background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;')
+        elif val < mean - 0.8 * std:
+            if lower_is_better:
+                # Baix és BO (Vermell)
+                styles.append('background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;')
+            else:
+                # Baix és DOLENT (Blau)
+                styles.append('background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;')
+        else:
+            styles.append('')
+    return styles
 # --- Rest of the application ---
 
 RAW_DIR = "data/raw"
@@ -1445,10 +1484,12 @@ elif view == "Scouting Equips":
                         for col in ["ro", "ro Ag", "rd", "rd ag"]:
                             t_config[col] = st.column_config.NumberColumn(col, width="small")
                             
+                        # canvi: Aplicació del format de decimals i l'estilador de colors d'outliers a les dues taules de parelles
                         with col_best:
                             st.write(f"👍 **Millors companyies per a {player_X}**")
+                            styled_best = teammate_df.head(3).style.apply(highlight_teammate_outliers)
                             st.dataframe(
-                                teammate_df.head(3), 
+                                styled_best, 
                                 use_container_width=False, 
                                 hide_index=True, 
                                 column_config=t_config
@@ -1457,8 +1498,10 @@ elif view == "Scouting Equips":
                             pass
                         with col_worst:
                             st.write(f"👎 **Pitjors companyies per a {player_X}**")
+                            # Mostra els 3 pitjors ordenats de pitjor a millor
+                            styled_worst = teammate_df.tail(3).sort_values("+/- Acumulat", ascending=True).style.apply(highlight_teammate_outliers)
                             st.dataframe(
-                                teammate_df.tail(3).sort_values("+/- Acumulat", ascending=True), 
+                                styled_worst, 
                                 use_container_width=False, 
                                 hide_index=True, 
                                 column_config=t_config
