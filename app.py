@@ -1411,21 +1411,31 @@ elif view == "Scouting Equips":
                     on_court = combined_df[combined_df["Lineup"].str.contains(player_X, na=False)]
                     off_court = combined_df[~combined_df["Lineup"].str.contains(player_X, na=False)]
                     
+                    # canvi: Afegit l'indicador d'Impacte NET On-Off de 3 columnes de mètriques per a l' staff
                     st.write(f"Rendiment global d'On/Off per a **{player_X}**:")
-                    col_on, col_off = st.columns(2)
+                    col_on, col_off, col_net = st.columns(3)
+                    
+                    plus_on = on_court["+/-"].sum() if not on_court.empty else 0.0
+                    plus_off = off_court["+/-"].sum() if not off_court.empty else 0.0
+                    net_impact = plus_on - plus_off
+                    
                     with col_on:
-                        plus_on = on_court["+/-"].sum() if not on_court.empty else 0.0
                         st.metric(
                             label=f"A Pista ({player_X})", 
                             value=f"{plus_on:+.1f}",
                             help=f"Equip jugant amb el Jugador A a pista. Punts a favor: {on_court['PTS_For'].sum():.0f}, Punts en contra: {on_court['PTS_Agn'].sum():.0f}"
                         )
                     with col_off:
-                        plus_off = off_court["+/-"].sum() if not off_court.empty else 0.0
                         st.metric(
                             label=f"A la Banqueta (Off-Court)", 
                             value=f"{plus_off:+.1f}",
                             help=f"Equip jugant sense el Jugador A a pista. Punts a favor: {off_court['PTS_For'].sum():.0f}, Punts en contra: {off_court['PTS_Agn'].sum():.0f}"
+                        )
+                    with col_net:
+                        st.metric(
+                            label="Impacte NET (On-Off)",
+                            value=f"{net_impact:+.1f}",
+                            help=f"Diferencial net de l'equip amb el jugador a pista vs. a la banqueta. Càlcul: {plus_on:+.1f} - ({plus_off:+.1f}) = {net_impact:+.1f}"
                         )
                         
                     st.write("")
