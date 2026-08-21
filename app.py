@@ -1554,13 +1554,6 @@ elif view == "Scouting Equips":
                     st.write(f"📊 **Perfil de Rendiment Detallat d'On/Off per a {player_X}:**")
                     # canvi: Re-etiquetats els indicadors del capçal a "Trams jugats" en lloc d'en comú
                     st.caption(f"⏱️ **Minuts de mitjana per partit:** {avg_time} | 🏆 **Partits jugats total:** {games_played_val} | 🔄 **Trams jugats:** {trams_on}")
-                    
-                    st.dataframe(
-                        profile_df.style.apply(highlight_on_off_profile_diff, axis=None), 
-                        use_container_width=False,
-                        column_config=profile_config,
-                        hide_index=True
-                    )
                     st.dataframe(
                         profile_df.style.apply(highlight_on_off_profile_diff, axis=None), 
                         use_container_width=False,
