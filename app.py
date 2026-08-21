@@ -1469,14 +1469,24 @@ elif view == "Scouting Equips":
                                         style_df.loc[net_idx, col] = 'background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;'
                         return style_df
 
-                    # canvi: Generació i càlcul de les dades del perfil On/Off amb el volum de rebots normalitzat per tram (Fase 3 avançada)
+                    # canvi: Cerca de dades reals acumulades del jugador a la lliga per al subtítol de volum
+                    scout_player_rows = master_players[master_players["JUGADOR"] == player_X]
+                    if not scout_player_rows.empty:
+                        scout_player_row = scout_player_rows.iloc[0]
+                        avg_time = scout_player_row.get("TIME", "00:00")
+                        games_played_val = int(pd.to_numeric(scout_player_row.get("GamesPlayed", 1), errors="coerce"))
+                    else:
+                        avg_time = "00:00"
+                        games_played_val = 0
+
+                    # canvi: Generació i càlcul de les dades incloent la nova columna de volum 'Trams' de fons (Fase 3)
                     trams_on = len(on_court)
                     trams_off = len(off_court)
                     
                     o_efg_on, d_efg_on, to_on, to_ag_on, ro_on, ro_ag_on, rd_on, rd_ag_on = calculate_combo_stats_metrics(on_court)
                     o_efg_off, d_efg_off, to_off, to_ag_off, ro_off, ro_ag_off, rd_off, rd_ag_off = calculate_combo_stats_metrics(off_court)
                     
-                    # Normalitzem els rebots dividint pel número de rotacions (trams) jugats a cada estat
+                    # Normalitzem els rebots dividint pel número de rotacions (trams)
                     ro_on_s = ro_on / trams_on if trams_on > 0 else 0.0
                     ro_off_s = ro_off / trams_off if trams_off > 0 else 0.0
                     ro_ag_on_s = ro_ag_on / trams_on if trams_on > 0 else 0.0
@@ -1487,9 +1497,11 @@ elif view == "Scouting Equips":
                     rd_ag_on_s = rd_ag_on / trams_on if trams_on > 0 else 0.0
                     rd_ag_off_s = rd_ag_off / trams_off if trams_off > 0 else 0.0
                     
+                    # canvi: Afegida la columna "Trams" per a Atac i Defensa
                     profile_rows = [
                         {
                             "Estat": f"A Pista ({player_X})",
+                            "Trams": trams_on,
                             "off eFG%": o_efg_on, "def eFG%": d_efg_on,
                             "to%": to_on, "to%ag": to_ag_on,
                             "RO/tram": ro_on_s, "RO Ag/tram": ro_ag_on_s,
@@ -1497,6 +1509,7 @@ elif view == "Scouting Equips":
                         },
                         {
                             "Estat": "A la Banqueta (Off)",
+                            "Trams": trams_off,
                             "off eFG%": o_efg_off, "def eFG%": d_efg_off,
                             "to%": to_off, "to%ag": to_ag_off,
                             "RO/tram": ro_off_s, "RO Ag/tram": ro_ag_off_s,
@@ -1504,6 +1517,7 @@ elif view == "Scouting Equips":
                         },
                         {
                             "Estat": "Diferencial (NET)",
+                            "Trams": None, # Deixem en blanc la casella diferencial
                             "off eFG%": o_efg_on - o_efg_off, "def eFG%": d_efg_on - d_efg_off,
                             "to%": to_on - to_off, "to%ag": to_ag_on - to_ag_off,
                             "RO/tram": ro_on_s - ro_off_s, "RO Ag/tram": ro_ag_on_s - ro_ag_off_s,
@@ -1513,10 +1527,10 @@ elif view == "Scouting Equips":
                     
                     profile_df = pd.DataFrame(profile_rows)
                     
-                    # Configuració compacta unificada de píxels
-                    # canvi: Amplades de píxels ampliades finament perquè els títols en català hi cabin perfectament sense talls de text
+                    # canvi: Nova configuració de columnes que afegeix l'escut de Trams en píxels compactes
                     profile_config = {
-                        "Estat": st.column_config.TextColumn("Estat", width=160),
+                        "Estat": st.column_config.TextColumn("Estat", width=180),
+                        "Trams": st.column_config.NumberColumn("Trams", width=55),
                         "off eFG%": st.column_config.NumberColumn("eFG% Atac", format="%.1f%%", width=95),
                         "def eFG%": st.column_config.NumberColumn("eFG% Def", format="%.1f%%", width=85),
                         "to%": st.column_config.NumberColumn("Pèrdues %", format="%.1f%%", width=95),
@@ -1529,6 +1543,8 @@ elif view == "Scouting Equips":
                     
                     st.write("")
                     st.write(f"📊 **Perfil de Rendiment Detallat d'On/Off per a {player_X}:**")
+                    # canvi: Afegit el subtítol amb la informació de temps real de la setmana
+                    st.caption(f"⏱️ **Minuts de mitjana per partit:** {avg_time} | 🏆 **Partits jugats total:** {games_played_val} | 🔄 **Trams jugats en comú:** {trams_on}")
                     st.dataframe(
                         profile_df.style.apply(highlight_on_off_profile_diff, axis=None), 
                         use_container_width=False,
