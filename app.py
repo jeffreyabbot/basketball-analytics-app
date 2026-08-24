@@ -1201,10 +1201,10 @@ elif view == "Scouting Jugadors":
                         
                         # Invertim els eixos dinàmicament si la mètrica millora en valors baixos (ex: eFG% defensiu o TO% d'atac)
                         if x_col in ["Net_eFG_Def", "Net_TO_Off"]:
-                            fig_scat_onoff.update_xaxis(autorange="reversed")
+                            fig_scat_onoff.update_xaxes(autorange="reversed")
                         
                         if y_col in ["On_eFG_Def", "On_TO_Off"]:
-                            fig_scat_onoff.update_yaxis(autorange="reversed")
+                            fig_scat_onoff.update_yaxes(autorange="reversed")
                             
                         st.plotly_chart(fig_scat_onoff, use_container_width=True)
 
