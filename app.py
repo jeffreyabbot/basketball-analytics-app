@@ -1154,23 +1154,20 @@ elif view == "Scouting Jugadors":
                         
                         x_col, y_col, y_label, x_label = metric_map[scout_metric]
                         
-                        # Generem el gràfic de lliga
+                        # canvi: Definició de color de seguretat dinàmica per evitar qualsevol ValueError de cache de fons de Streamlit
+                        color_col = "Team" if "Team" in plot_df.columns and selected_player_team == "Tots els equips" else None
+                        
+                        # Generem el gràfic de dispersió lligat a l'escala de colors de l'equip de seguretat
                         fig_scat_onoff = px.scatter(
                             plot_df,
                             x=x_col,
                             y=y_col,
                             hover_name="JUGADOR",
                             text="JUGADOR", 
-                            color="Team" if selected_player_team == "Tots els equips" else None,
+                            color=color_col, # <--- canvi: Utilitzem el filtre de color de seguretat
                             title=f"Mapa d'Impacte On-Off de la Lliga - {scout_metric}",
                             labels={x_col: x_label, y_col: y_label},
                             color_discrete_sequence=px.colors.qualitative.Safe
-                        )
-                        
-                        fig_scat_onoff.update_traces(
-                            textposition='top center',
-                            textfont=dict(size=10, color="#555555"),
-                            marker=dict(size=12)
                         )
                         
                         # Add a vertical line at X = 0 representing zero net impact
