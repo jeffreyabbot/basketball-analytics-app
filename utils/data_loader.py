@@ -753,3 +753,55 @@ def calculate_combo_stats_metrics(df):
     to_pct_ag = (tov_agn / poss_agn * 100.0) if poss_agn > 0 else 0.0
     
     return off_efg, def_efg, to_pct, to_pct_ag, ro, ro_ag, rd, rd_ag
+# Afegeix-ho a baix de tot de /utils/data_loader.py:
+@st.cache_data
+def load_all_league_players_on_off(pbp_dir, teams_list, cache_key):
+    """
+    Calculates On-Court, Off-Court, and Net Swings for ALL players in the ENTIRE league
+    by iterating through all teams and caching the result dynamically.
+    """
+    all_players_list = []
+    
+    for team in teams_list:
+        # Carreguem els quintets acumulats (ja en cache, velocitat gairebé instantània)
+        agg_lineups, combined_df = load_and_aggregate_season_lineups(pbp_dir, team, cache_key)
+        if combined_df.empty:
+            continue
+            
+        # Extraiem el roster de jugadors únics de l'equip
+        roster = set()
+        for c in ["P1", "P2", "P3", "P4", "P5"]:
+            if c in combined_df.columns:
+                roster.update(combined_df[c].dropna().unique())
+        
+        for player in sorted(list(roster)):
+            on_court = combined_df[combined_df["Lineup"].str.contains(player, na=False)]
+            off_court = combined_df[~combined_df["Lineup"].str.contains(player, na=False)]
+            
+            if on_court.empty or off_court.empty:
+                continue
+                
+            o_efg_on, d_efg_on, to_on, to_ag_on, _, _, _, _ = calculate_combo_stats_metrics(on_court)
+            o_efg_off, d_efg_off, to_off, to_ag_off, _, _, _, _ = calculate_combo_stats_metrics(off_court)
+            
+            all_players_list.append({
+                "JUGADOR": player,
+                "Team": team,
+                "On_eFG_Off": o_efg_on,
+                "Off_eFG_Off": o_efg_off,
+                "Net_eFG_Off": o_efg_on - o_efg_off,
+                
+                "On_eFG_Def": d_efg_on,
+                "Off_eFG_Def": d_efg_off,
+                "Net_eFG_Def": d_efg_on - d_efg_off,
+                
+                "On_TO_Off": to_on,
+                "Off_TO_Off": to_off,
+                "Net_TO_Off": to_on - to_off,
+                
+                "On_TO_Def": to_ag_on,
+                "Off_TO_Def": to_ag_off,
+                "Net_TO_Def": to_ag_on - to_ag_off
+            })
+            
+    return pd.DataFrame(all_players_list)
