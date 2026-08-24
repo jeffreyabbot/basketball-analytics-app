@@ -1173,28 +1173,32 @@ elif view == "Scouting Jugadors":
                         # Add a vertical line at X = 0 representing zero net impact
                         fig_scat_onoff.add_vline(x=0.0, line_dash="dash", line_color=CB_ORANGE, annotation_text="Llindar de Canvi Zero", annotation_position="top right")
                         
-                        # canvi: Mitjana real d'equip del full de lliga (reemplaça el promedi simple esbiaixat de jugadors)
+                        # canvi: Càlcul del llindar de mitjana d'equip de fons real per a eFG% i mitjana de plantilla per a TO% (evita desajustaments per pèrdues PBP buides)
                         if selected_player_team != "Tots els equips":
                             if x_col == "Net_eFG_Off":
                                 true_avg_y = float(offense_df[offense_df["Team"] == selected_player_team]["eFG%"].iloc[0])
+                                avg_line_label = f"Mitjana real d'Atac de l'Equip ({true_avg_y:.2f}%)"
                             elif x_col == "Net_eFG_Def":
                                 true_avg_y = float(defense_df[defense_df["Team"] == selected_player_team]["eFG%"].iloc[0])
-                            elif x_col == "Net_TO_Off":
-                                true_avg_y = float(offense_df[offense_df["Team"] == selected_player_team]["TOV%cal"].iloc[0])
+                                avg_line_label = f"Mitjana real de Def de l'Equip ({true_avg_y:.2f}%)"
                             else:
-                                true_avg_y = float(defense_df[defense_df["Team"] == selected_player_team]["TOV%cal"].iloc[0])
-                            avg_line_label = f"Mitjana real d'Atac de l'Equip ({true_avg_y:.2f}%)" if x_col in ["Net_eFG_Off", "Net_TO_Off"] else f"Mitjana real de Def de l'Equip ({true_avg_y:.2f}%)"
+                                # Per a pèrdues de pilota (TO%), usem la mitjana del promedi dels punts dibuixats per consistència visual absoluta
+                                true_avg_y = plot_df[y_col].mean()
+                                avg_line_label = f"Mitjana de la Plantilla a Pista ({true_avg_y:.2f}%)"
                         else:
-                            # Mitjana global real ponderada de tota la lliga de Copa Catalunya d'aquell any
+                            # Mitjana global real ponderada de tota la lliga
                             if x_col == "Net_eFG_Off":
                                 true_avg_y = offense_df["eFG%"].mean()
+                                avg_line_label = f"Mitjana Atac Lliga ({true_avg_y:.2f}%)"
                             elif x_col == "Net_eFG_Def":
                                 true_avg_y = defense_df["eFG%"].mean()
-                            elif x_col == "Net_TO_Off":
-                                true_avg_y = offense_df["TOV%cal"].mean()
+                                avg_line_label = f"Mitjana Def Lliga ({true_avg_y:.2f}%)"
                             else:
-                                true_avg_y = defense_df["TOV%cal"].mean()
-                            avg_line_label = f"Mitjana Atac Lliga ({true_avg_y:.2f}%)" if x_col in ["Net_eFG_Off", "Net_TO_Off"] else f"Mitjana Def Lliga ({true_avg_y:.2f}%)"
+                                true_avg_y = plot_df[y_col].mean()
+                                avg_line_label = f"Mitjana Pèrdues Lliga ({true_avg_y:.2f}%)"
+                        
+                        # Dibuixem la línia de mitjana calibrada
+                        fig_scat_onoff.add_hline(y=true_avg_y, line_dash="dot", line_color="gray", annotation_text=avg_line_label, annotation_position="top left")
                         
                         # Dibuixem la línia verídica d'equip (ex: exactament al 47.45%)
                         fig_scat_onoff.add_hline(y=true_avg_y, line_dash="dot", line_color="gray", annotation_text=avg_line_label, annotation_position="top left")
