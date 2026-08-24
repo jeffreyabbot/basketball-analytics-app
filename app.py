@@ -221,7 +221,44 @@ def highlight_teammate_outliers(column):
                 styles.append('background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;')
         else:
             styles.append('')
-    return styles
+    return styles# Afegeix-ho a dalt d'app.py, a sota del mòdul d'highlight_teammate_outliers:
+def calculate_all_players_on_off_profiles(combined_df, roster_list):
+    """
+    Calculates On-Court, Off-Court, and Net Swings for all players in the roster
+    using the raw combined lineup stints.
+    """
+    rows = []
+    for player in roster_list:
+        on_court = combined_df[combined_df["Lineup"].str.contains(player, na=False)]
+        off_court = combined_df[~combined_df["Lineup"].str.contains(player, na=False)]
+        
+        if on_court.empty or off_court.empty:
+            continue
+            
+        o_efg_on, d_efg_on, to_on, to_ag_on, _, _, _, _ = calculate_combo_stats_metrics(on_court)
+        o_efg_off, d_efg_off, to_off, to_ag_off, _, _, _, _ = calculate_combo_stats_metrics(off_court)
+        
+        rows.append({
+            "JUGADOR": player,
+            "On_eFG_Off": o_efg_on,
+            "Off_eFG_Off": o_efg_off,
+            "Net_eFG_Off": o_efg_on - o_efg_off,
+            
+            "On_eFG_Def": d_efg_on,
+            "Off_eFG_Def": d_efg_off,
+            "Net_eFG_Def": d_efg_on - d_efg_off,
+            
+            "On_TO_Off": to_on,
+            "Off_TO_Off": to_off,
+            "Net_TO_Off": to_on - to_off,
+            
+            "On_TO_Def": to_ag_on,
+            "Off_TO_Def": to_ag_off,
+            "Net_TO_Def": to_ag_on - to_ag_off
+        })
+        
+    return pd.DataFrame(rows)
+
 # --- Rest of the application ---
 
 RAW_DIR = "data/raw"
@@ -1058,6 +1095,81 @@ elif view == "Scouting Jugadors":
                 column_config=radar_table_config,
                 hide_index=True
             )
+            # canvi: MÒDUL D'ANÀLISI D'IMPACTE NET ON-OFF VS EFICIÈNCIA DE JUGADORS EN SCUTING (Fase 4)
+            if selected_player_team != "Tots els equips":
+                st.markdown("---")
+                st.subheader(f"📊 Gràfic d'Impacte On-Off vs. Eficiència de la Plantilla - {selected_player_team}")
+                st.write("Aquest gràfic analitza l'impacte net de cada jugador: l'**Eix X** mostra la millora/gir que té l'equip amb ell a pista (On - Off) i l'**Eix Y** mostra l'eficiència absoluta de l'equip quan ell està jugant. El quadrant superior dret sempre representa el màxim impacte positiu.")
+                
+                # Carreguem els llançaments PBP de fons de l'equip seleccionat des de la cache
+                pbp_cache_key = get_dir_cache_key(PBP_DIR)
+                _, combined_df = load_and_aggregate_season_lineups(PBP_DIR, selected_player_team, pbp_cache_key)
+                
+                if combined_df.empty:
+                    st.info("No s'han trobat dades de Play-By-Play per fer l'anàlisi d'impacte On-Off d'aquest equip.")
+                else:
+                    # Extraiem el roster de jugadors de l'equip
+                    roster = set()
+                    for c in ["P1", "P2", "P3", "P4", "P5"]:
+                        if c in combined_df.columns:
+                            roster.update(combined_df[c].dropna().unique())
+                    roster_list = sorted(list(roster))
+                    
+                    # Calculem la matriu On/Off de fons de tots els jugadors
+                    roster_on_off_df = calculate_all_players_on_off_profiles(combined_df, roster_list)
+                    
+                    if not roster_on_off_df.empty:
+                        # Selector de mètrica tàctica per al gràfic de dispersió
+                        scout_metric = st.selectbox(
+                            "Selecciona la Mètrica d'Impacte per al Gràfic de Dispersió",
+                            ["eFG% Ofensiu (Atac)", "eFG% Defensiu (Rival)", "Pèrdues % (TO%)", "Pèrdues Rivals Forçades (TO% Rival)"]
+                        )
+                        
+                        # Mapeig dinàmic d'eixos
+                        metric_map = {
+                            "eFG% Ofensiu (Atac)": ("Net_eFG_Off", "On_eFG_Off", "eFG% Atac a Pista", "Millora eFG% Atac (On-Off)"),
+                            "eFG% Defensiu (Rival)": ("Net_eFG_Def", "On_eFG_Def", "eFG% Defensiu a Pista", "Millora eFG% Defensiu (On-Off)"),
+                            "Pèrdues % (TO%)": ("Net_TO_Off", "On_TO_Off", "Pèrdues % a Pista", "Millora TO% (On-Off)"),
+                            "Pèrdues Rivals Forçades (TO% Rival)": ("Net_TO_Def", "On_TO_Def", "Pèrdues Rivals a Pista", "Millora TO% Rival (On-Off)")
+                        }
+                        
+                        x_col, y_col, y_label, x_label = metric_map[scout_metric]
+                        
+                        # Generem el gràfic de dispersió amb el nom dels jugadors visible al costat dels punts
+                        fig_scat_onoff = px.scatter(
+                            roster_on_off_df,
+                            x=x_col,
+                            y=y_col,
+                            hover_name="JUGADOR",
+                            text="JUGADOR",
+                            title=f"Mapa d'Impacte On-Off - {scout_metric}",
+                            labels={x_col: x_label, y_col: y_label},
+                            color_discrete_sequence=[CB_BLUE]
+                        )
+                        
+                        # Estilització fina de fons de les etiquetes grises (10px) dels jugadors
+                        fig_scat_onoff.update_traces(
+                            textposition='top center',
+                            textfont=dict(size=10, color="#555555"),
+                            marker=dict(size=12)
+                        )
+                        
+                        # Add a vertical line at X = 0 representing zero net impact
+                        fig_scat_onoff.add_vline(x=0.0, line_dash="dash", line_color="orange", annotation_text="Llindar de Canvi Zero", annotation_position="top right")
+                        
+                        # Add horizontal line at team average
+                        mean_y_onoff = roster_on_off_df[y_col].mean()
+                        fig_scat_onoff.add_hline(y=mean_y_onoff, line_dash="dot", line_color="gray", annotation_text="Mitjana de la Plantilla", annotation_position="top left")
+                        
+                        # Invertim els eixos dinàmicament si la mètrica millora en valors baixos (ex: eFG% defensiu o TO% d'atac)
+                        # Això garanteix que la cantonada dret-dalt sigui SEMPRE la millor i el gràfic quedi homogeni
+                        if x_col in ["Net_eFG_Def", "Net_TO_Off"]:
+                            fig_scat_onoff.update_xaxis(autorange="reversed")
+                        
+                        if y_col in ["On_eFG_Def", "On_TO_Off"]:
+                            fig_scat_onoff.update_yaxis(autorange="reversed")
+                            
+                        st.plotly_chart(fig_scat_onoff, use_container_width=True)
 
 # ----------------- VIEW 4: SCOUTING -----------------
 elif view == "Scouting Equips":
