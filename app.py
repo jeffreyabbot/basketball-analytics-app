@@ -927,7 +927,7 @@ elif view == "Scouting Jugadors":
         master_players["eFG%"] = pd.to_numeric(master_players["eFG%"], errors='coerce')
         master_players["FGA"] = pd.to_numeric(master_players["FGA"], errors='coerce')
         
-        for col in ["Rim FGA", "Paint FGA", "MR FGA", "Cor3 FGA", "ATB3 FGA", "Rim %", "Paint %", "MR %", "Cor3 %", "ATB3 %"]:
+        for col in ["Rim FGA", "Paint FGA", "MR FGA", "Cor3 FGA", "ATB3 FGA", "Rim %", "Paint %", "MR %", "Cor3 %", "ATB3 %", "FT%"]:
             if col in master_players.columns:
                 master_players[col] = pd.to_numeric(master_players[col], errors='coerce').fillna(0.0)
         
@@ -977,8 +977,9 @@ elif view == "Scouting Jugadors":
             sort_metric = sort_metric_mapping[sort_metric_sel]
             sorted_players = filtered_players.sort_values(sort_metric, ascending=False)
             
+            # canvi: Afegit "FT%" (percentatge d'encert de tirs lliures) al costat de l'eFG% i TS% originals
             view_cols = [
-                "JUGADOR", "Team", "GamesPlayed", "TIME", "FGA", "PTS", "eFG%", 
+                "JUGADOR", "Team", "GamesPlayed", "TIME", "FGA", "PTS", "eFG%", "TS%", "FT%", 
                 "Rim FGA", "Rim %", "Paint FGA", "Paint %", "MR FGA", "MR %", "Cor3 FGA", "Cor3 %", "ATB3 FGA", "ATB3 %"
             ]
             
@@ -991,7 +992,11 @@ elif view == "Scouting Jugadors":
                     if col == "TIME":
                         player_index_config[col] = st.column_config.TextColumn(col, width=65)
                     else:
-                        player_index_config[col] = st.column_config.NumberColumn(col, width=60)
+                        # canvi: Formatador de percentatge amb '%' en viu per a qualsevol mètrica de llançament
+                        if "%" in col:
+                            player_index_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width=65)
+                        else:
+                            player_index_config[col] = st.column_config.NumberColumn(col, width=60)
             
             st.dataframe(
                 sorted_players[view_cols].style.format({
@@ -1000,6 +1005,7 @@ elif view == "Scouting Jugadors":
                     "PTS": "{:.1f}",
                     "eFG%": "{:.2f}%",
                     "TS%": "{:.2f}%",
+                    "FT%": "{:.2f}%", # <--- canvi: Formatador de decimals a la llista d'escut
                     "Rim FGA": "{:.1f}",
                     "Rim %": "{:.1f}%",
                     "Paint FGA": "{:.1f}",
