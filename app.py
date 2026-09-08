@@ -252,38 +252,59 @@ def get_game_chronological_sort_key(g):
 
 # Carrega i extreu l'històric de partits de tots els jugadors ordenats cronològicament
 @st.cache_data(show_spinner=False)
-def load_all_season_player_gamelogs(box_dir, cache_key):
+# Carrega i extreu l'històric de partits ordenats per la jornada real
+@st.cache_data(show_spinner=False)
+def load_all_season_player_gamelogs(box_dir, pbp_dir, cache_key):
     if not box_dir or not os.path.exists(box_dir):
         return pd.DataFrame()
         
+    # Enllacem la jornada oficial de cada partit des de raw_games_df
+    raw_games_df = load_all_raw_game_boxscores(box_dir, pbp_dir, cache_key)
+    file_to_week = {}
+    if not raw_games_df.empty and "Game_File" in raw_games_df.columns and "Week" in raw_games_df.columns:
+        file_to_week = dict(zip(raw_games_df["Game_File"], raw_games_df["Week"]))
+        
     games = load_all_game_options(box_dir)
-    # Ordenem els partits cronològicament per Jornada/Data
-    games = sorted(games, key=get_game_chronological_sort_key)
-    
     records = []
+    
+    # Evita duplicar punts si el boxscore conté una fila "TOTAL"
+    def get_clean_team_pts(df_p):
+        if df_p is None or df_p.empty or "PTS" not in df_p.columns:
+            return 0
+        mask_tot = df_p["JUGADOR"].astype(str).str.upper().str.contains("TOTAL|EQUIP|TEAM")
+        if mask_tot.any():
+            return int(pd.to_numeric(df_p.loc[mask_tot, "PTS"], errors="coerce").iloc[0])
+        return int(pd.to_numeric(df_p["PTS"], errors="coerce").fillna(0).sum())
+
     for g in games:
         fname = g.get("filename", "") or g.get("name", "")
-        m_j = re.search(r'(?:jornada|week|round|j)[\s_]*0*(\d+)', fname, re.IGNORECASE)
-        round_num = int(m_j.group(1)) if m_j else None
-        round_str = f"J{round_num}" if round_num is not None else ""
+        
+        # Extreiem la jornada oficial
+        week_str = file_to_week.get(fname, "") or file_to_week.get(g.get("name", ""), "")
+        m_j = re.search(r'\d+', str(week_str))
+        if not m_j:
+            m_j = re.search(r'(?:jornada|week|round|j)[\s_]*0*(\d+)', fname, re.IGNORECASE)
+            
+        round_num = int(m_j.group(0)) if m_j else 999
+        round_label = f"J{round_num}" if round_num != 999 else ""
         
         try:
             _, (t1_name, t1_p), (t2_name, t2_p) = parse_boxscore(g["path"])
             
-            score_t1 = int(t1_p["PTS"].sum()) if (t1_p is not None and "PTS" in t1_p.columns) else 0
-            score_t2 = int(t2_p["PTS"].sum()) if (t2_p is not None and "PTS" in t2_p.columns) else 0
+            score_t1 = get_clean_team_pts(t1_p)
+            score_t2 = get_clean_team_pts(t2_p)
             
-            pairs = [
+            for df_p, t_name, opp_name, my_sc, opp_sc in [
                 (t1_p, t1_name, t2_name, score_t1, score_t2),
                 (t2_p, t2_name, t1_name, score_t2, score_t1)
-            ]
-            
-            for df_p, t_name, opp_name, my_sc, opp_sc in pairs:
+            ]:
                 if df_p is not None and not df_p.empty and "JUGADOR" in df_p.columns:
                     w_l = "W" if my_sc >= opp_sc else "L"
                     res_text = f"{my_sc}-{opp_sc} {w_l}"
                     
-                    for _, r in df_p.iterrows():
+                    # Filtrem la fila "TOTAL" perquè no compti com a jugador
+                    p_rows = df_p[~df_p["JUGADOR"].astype(str).str.upper().str.contains("TOTAL|EQUIP|TEAM")]
+                    for _, r in p_rows.iterrows():
                         p_raw = str(r["JUGADOR"]).strip()
                         records.append({
                             "JUGADOR": p_raw,
@@ -293,7 +314,7 @@ def load_all_season_player_gamelogs(box_dir, cache_key):
                             "Game_Name": g["name"],
                             "Filename": fname,
                             "Round_Num": round_num,
-                            "Round_Str": round_str,
+                            "Round_Str": round_label,
                             "Score_Result": res_text,
                             "PTS": float(r.get("PTS", 0.0)),
                             "EFI": float(r.get("EFI", 0.0)),
@@ -308,8 +329,7 @@ def load_all_season_player_gamelogs(box_dir, cache_key):
         except Exception:
             continue
             
-    df_all = pd.DataFrame(records)
-    return df_all
+    return pd.DataFrame(records)
 
 RAW_DIR = "data/raw"
 
@@ -952,7 +972,7 @@ elif view == "Scouting Jugadors":
         
         # Carreguem tots els partits de la temporada un cop en memòria cau
         pbp_cache_key = get_dir_cache_key(BOX_DIR)
-        season_logs_df = load_all_season_player_gamelogs(BOX_DIR, pbp_cache_key)
+        season_logs_df = load_all_season_player_gamelogs(BOX_DIR, PBP_DIR, pbp_cache_key)
         
         # Selector Superior del Jugador
         scout_p_teams = ["Tots els equips"] + sorted(list(master_players["Team"].dropna().unique()))
@@ -977,11 +997,8 @@ elif view == "Scouting Jugadors":
         p_clean_target = clean_player_name_for_matching(selected_player_card)
         if not season_logs_df.empty:
             player_logs = season_logs_df[season_logs_df["Clean_Name"] == p_clean_target].copy()
-            # Ordenem per jornada si existeix, o pel nom del fitxer
-            if "Round_Num" in player_logs.columns and player_logs["Round_Num"].notna().any():
-                player_logs = player_logs.sort_values(by="Round_Num").reset_index(drop=True)
-            else:
-                player_logs = player_logs.reset_index(drop=True)
+            # Ordenem de la J1 a la J26 de forma ascendent
+            player_logs = player_logs.sort_values(by=["Round_Num", "Filename"]).reset_index(drop=True)
         else:
             player_logs = pd.DataFrame()
             
@@ -1281,21 +1298,6 @@ elif view == "Scouting Jugadors":
             # ========== COLUMNA 3: DISTRIBUCIÓ DE TIR I PARTITS RECENTS ==========
             with col_c3:
                 # 1. Shot distribution
-                st.markdown(
-                    """
-                    <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px; margin-bottom: 14px;">
-                        <div style="color: #f9fafb; font-size: 0.95rem; font-weight: 700; margin-bottom: 2px;">Shot distribution</div>
-                        <div style="color: #6b7280; font-size: 0.75rem; margin-bottom: 10px;">FG% vs Copa Cat &bull; delta in pp</div>
-                        <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #9ca3af; font-weight: 700; border-bottom: 1px solid #1f2937; padding-bottom: 4px; margin-bottom: 6px;">
-                            <div style="width: 140px;">Zone / FG</div>
-                            <div style="width: 45px; text-align: right;">FG%</div>
-                            <div style="width: 50px; text-align: right;">COPA</div>
-                            <div style="width: 45px; text-align: right;">Δ pp</div>
-                        </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-                
                 zones_scout = [
                     ("Rim", "Cèrcol (Rim)", p_row.get("Rim %", 0), league_avg_dict["Rim_Pct"], p_row.get("Rim FGA", 0)),
                     ("Paint", "Pintura (Paint)", p_row.get("Paint %", 0), league_avg_dict["Paint_Pct"], p_row.get("Paint FGA", 0)),
@@ -1304,25 +1306,72 @@ elif view == "Scouting Jugadors":
                     ("ATB3", "Top / Wing 3 (ATB)", p_row.get("ATB3 %", 0), league_avg_dict["ATB3_Pct"], p_row.get("ATB3 FGA", 0))
                 ]
                 
+                rows_html = ""
                 for z_id, z_name, z_pct, z_lg_pct, z_fga in zones_scout:
                     delta = z_pct - z_lg_pct
                     delta_color = "#2dd4bf" if delta >= 0 else "#f87171"
                     delta_sign = "+" if delta > 0 else ""
-                    st.markdown(
-                        f"""
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; margin-bottom: 6px;">
-                            <div style="width: 140px; color: #d1d5db;">
-                                <div>{z_name}</div>
-                                <div style="font-size: 0.68rem; color: #6b7280;">{z_fga:.1f} FGA/p</div>
-                            </div>
-                            <div style="width: 45px; text-align: right; color: #f9fafb; font-weight: 700;">{z_pct:.1f}</div>
-                            <div style="width: 50px; text-align: right; color: #9ca3af;">{z_lg_pct:.1f}</div>
-                            <div style="width: 45px; text-align: right; color: {delta_color}; font-weight: 700;">{delta_sign}{delta:.1f}</div>
+                    rows_html += f"""
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; margin-bottom: 8px;">
+                        <div style="width: 140px; color: #e5e7eb;">
+                            <div style="font-weight: 600;">{z_name}</div>
+                            <div style="font-size: 0.7rem; color: #9ca3af;">{z_fga:.1f} FGA/p</div>
                         </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-                st.markdown("</div>", unsafe_allow_html=True)
+                        <div style="width: 45px; text-align: right; color: #ffffff; font-weight: 700;">{z_pct:.1f}</div>
+                        <div style="width: 50px; text-align: right; color: #9ca3af;">{z_lg_pct:.1f}</div>
+                        <div style="width: 45px; text-align: right; color: {delta_color}; font-weight: 700;">{delta_sign}{delta:.1f}</div>
+                    </div>
+                    """
+                
+                shot_dist_html = f"""
+                <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                    <div style="color: #f9fafb; font-size: 0.95rem; font-weight: 700; margin-bottom: 2px;">Shot distribution</div>
+                    <div style="color: #9ca3af; font-size: 0.75rem; margin-bottom: 12px;">FG% vs Copa Cat &bull; delta in pp</div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #9ca3af; font-weight: 700; border-bottom: 1px solid #374151; padding-bottom: 4px; margin-bottom: 8px;">
+                        <div style="width: 140px;">Zone / FG</div>
+                        <div style="width: 45px; text-align: right;">FG%</div>
+                        <div style="width: 50px; text-align: right;">COPA</div>
+                        <div style="width: 45px; text-align: right;">Δ pp</div>
+                    </div>
+                    {rows_html}
+                </div>
+                """
+                st.markdown(shot_dist_html, unsafe_allow_html=True)
+                
+                # 2. Recent box scores
+                recent_rows_html = ""
+                if not player_logs.empty:
+                    # Agafem els 5 últims de la llista ordenada cronològicament i els invertim per veure el més recent dalt de tot
+                    recent_5 = player_logs.tail(5).iloc[::-1]
+                    for _, r_log in recent_5.iterrows():
+                        fgm_tot = int(r_log["2PM"] + r_log["3PM"])
+                        fga_tot = int(r_log["2PA"] + r_log["3PA"])
+                        r_label = f"[{r_log['Round_Str']}] " if r_log.get("Round_Str") else ""
+                        score_info = f" &bull; {r_log['Score_Result']}" if r_log.get("Score_Result") else ""
+                        
+                        recent_rows_html += f"""
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding: 7px 0;">
+                            <div>
+                                <div style="color: #ffffff; font-size: 0.82rem; font-weight: 700;">{r_label}vs {r_log['Opponent']}</div>
+                                <div style="color: #9ca3af; font-size: 0.72rem;">{r_log['TIME']}{score_info} &bull; FG: {fgm_tot}/{fga_tot}</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="color: #2dd4bf; font-size: 0.95rem; font-weight: 800;">{r_log['PTS']:.0f} <span style="font-size: 0.75rem; color: #9ca3af;">PTS</span></div>
+                                <div style="color: #9ca3af; font-size: 0.72rem;">{r_log['EFI']:.0f} EFI</div>
+                            </div>
+                        </div>
+                        """
+                else:
+                    recent_rows_html = "<div style='color: #9ca3af; font-size: 0.8rem;'>Sense registre de partits individuals.</div>"
+
+                recent_box_html = f"""
+                <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px;">
+                    <div style="color: #f9fafb; font-size: 0.95rem; font-weight: 700; margin-bottom: 2px;">Recent box scores</div>
+                    <div style="color: #9ca3af; font-size: 0.75rem; margin-bottom: 10px;">PTS / EFI / MIN &bull; Últims partits jugats</div>
+                    {recent_rows_html}
+                </div>
+                """
+                st.markdown(recent_box_html, unsafe_allow_html=True)
                 
                 # 2. Recent box scores (Cronologia exacta dels últims partits)
                 st.markdown(
