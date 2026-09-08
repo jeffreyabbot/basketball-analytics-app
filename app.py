@@ -7,6 +7,7 @@ import re
 import glob
 import base64
 import unicodedata
+import textwrap
 
 from utils.data_loader import (
     get_available_seasons, 
@@ -271,10 +272,12 @@ def load_all_season_player_gamelogs(box_dir, pbp_dir, cache_key):
     def get_clean_team_pts(df_p):
         if df_p is None or df_p.empty or "PTS" not in df_p.columns:
             return 0
-        mask_tot = df_p["JUGADOR"].astype(str).str.upper().str.contains("TOTAL|EQUIP|TEAM")
-        if mask_tot.any():
-            return int(pd.to_numeric(df_p.loc[mask_tot, "PTS"], errors="coerce").iloc[0])
-        return int(pd.to_numeric(df_p["PTS"], errors="coerce").fillna(0).sum())
+        # Excloem les files de sistema ('Faltes d'equip', 'Total') i sumem només els jugadors reals
+        is_meta = df_p["JUGADOR"].astype(str).str.upper().str.contains("TOTAL|EQUIP|FALTE|TEAM")
+        pts = pd.to_numeric(df_p.loc[~is_meta, "PTS"], errors="coerce").fillna(0).sum()
+        if pts > 0:
+            return int(round(pts))
+        return int(round(pd.to_numeric(df_p["PTS"], errors="coerce").fillna(0).max()))
 
     for g in games:
         fname = g.get("filename", "") or g.get("name", "")
@@ -1336,12 +1339,11 @@ elif view == "Scouting Jugadors":
                     {rows_html}
                 </div>
                 """
-                st.markdown(shot_dist_html, unsafe_allow_html=True)
+                st.markdown(textwrap.dedent(shot_dist_html), unsafe_allow_html=True)
                 
                 # 2. Recent box scores
                 recent_rows_html = ""
                 if not player_logs.empty:
-                    # Agafem els 5 últims de la llista ordenada cronològicament i els invertim per veure el més recent dalt de tot
                     recent_5 = player_logs.tail(5).iloc[::-1]
                     for _, r_log in recent_5.iterrows():
                         fgm_tot = int(r_log["2PM"] + r_log["3PM"])
@@ -1371,7 +1373,7 @@ elif view == "Scouting Jugadors":
                     {recent_rows_html}
                 </div>
                 """
-                st.markdown(recent_box_html, unsafe_allow_html=True)
+                st.markdown(textwrap.dedent(recent_box_html), unsafe_allow_html=True)
                 
                 # 2. Recent box scores (Cronologia exacta dels últims partits)
                 st.markdown(
