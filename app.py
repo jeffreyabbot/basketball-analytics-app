@@ -6,6 +6,7 @@ import os
 import re
 import glob
 import base64
+import unicodedata
 
 from utils.data_loader import (
     get_available_seasons, 
@@ -82,9 +83,11 @@ def cat_rank(num):
     elif num == 4: return "4rt"
     else: return f"{num}è"
 
+# Normalitza noms traient dorsals i accents per garantir encreuaments exactes
 def clean_player_name_for_matching(name):
     s = str(name).strip()
-    s = re.sub(r'^#\d+\s+', '', s)
+    s = re.sub(r'^#\d+\s*', '', s)
+    s = unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('utf-8')
     return s.strip().lower()
 
 def extract_player_number(name):
@@ -232,19 +235,54 @@ def calculate_all_players_on_off_profiles(combined_df, roster_list):
         
     return pd.DataFrame(rows)
 
-# Carrega i extreu l'històric de partits de tots els jugadors (amb memòria cau per màxima rapidesa)
+# Criteri d'ordenació cronològica per jornada/data de partits
+def get_game_chronological_sort_key(g):
+    fname = g.get("filename", "") or g.get("name", "")
+    # Cerca de patrons com J1, J01, Jornada 1, Week 1
+    m = re.search(r'(?:jornada|week|round|j)[\s_]*0*(\d+)', fname, re.IGNORECASE)
+    if m:
+        return (0, int(m.group(1)))
+    m_date = re.search(r'(\d{4})[-_](\d{2})[-_](\d{2})', fname)
+    if m_date:
+        return (1, m_date.group(0))
+    digits = re.findall(r'\d+', fname)
+    if digits:
+        return (2, [int(d) for d in digits])
+    return (3, fname)
+
+# Carrega i extreu l'històric de partits de tots els jugadors ordenats cronològicament
 @st.cache_data(show_spinner=False)
 def load_all_season_player_gamelogs(box_dir, cache_key):
     if not box_dir or not os.path.exists(box_dir):
         return pd.DataFrame()
         
     games = load_all_game_options(box_dir)
+    # Ordenem els partits cronològicament per Jornada/Data
+    games = sorted(games, key=get_game_chronological_sort_key)
+    
     records = []
     for g in games:
+        fname = g.get("filename", "") or g.get("name", "")
+        m_j = re.search(r'(?:jornada|week|round|j)[\s_]*0*(\d+)', fname, re.IGNORECASE)
+        round_num = int(m_j.group(1)) if m_j else None
+        round_str = f"J{round_num}" if round_num is not None else ""
+        
         try:
             _, (t1_name, t1_p), (t2_name, t2_p) = parse_boxscore(g["path"])
-            for df_p, t_name, opp_name in [(t1_p, t1_name, t2_name), (t2_p, t2_name, t1_name)]:
+            
+            score_t1 = int(t1_p["PTS"].sum()) if (t1_p is not None and "PTS" in t1_p.columns) else 0
+            score_t2 = int(t2_p["PTS"].sum()) if (t2_p is not None and "PTS" in t2_p.columns) else 0
+            
+            pairs = [
+                (t1_p, t1_name, t2_name, score_t1, score_t2),
+                (t2_p, t2_name, t1_name, score_t2, score_t1)
+            ]
+            
+            for df_p, t_name, opp_name, my_sc, opp_sc in pairs:
                 if df_p is not None and not df_p.empty and "JUGADOR" in df_p.columns:
+                    w_l = "W" if my_sc >= opp_sc else "L"
+                    res_text = f"{my_sc}-{opp_sc} {w_l}"
+                    
                     for _, r in df_p.iterrows():
                         p_raw = str(r["JUGADOR"]).strip()
                         records.append({
@@ -253,7 +291,10 @@ def load_all_season_player_gamelogs(box_dir, cache_key):
                             "Team": t_name,
                             "Opponent": opp_name,
                             "Game_Name": g["name"],
-                            "Filename": g["filename"],
+                            "Filename": fname,
+                            "Round_Num": round_num,
+                            "Round_Str": round_str,
+                            "Score_Result": res_text,
                             "PTS": float(r.get("PTS", 0.0)),
                             "EFI": float(r.get("EFI", 0.0)),
                             "TIME": str(r.get("TIME", "00:00")),
@@ -266,7 +307,9 @@ def load_all_season_player_gamelogs(box_dir, cache_key):
                         })
         except Exception:
             continue
-    return pd.DataFrame(records)
+            
+    df_all = pd.DataFrame(records)
+    return df_all
 
 RAW_DIR = "data/raw"
 
@@ -880,7 +923,7 @@ elif view == "Acumulats Lliga":
                     fig_pps_def.update_layout(title=f"Eficiència de Tir Concedida (PPS) - {selected_profile_team}")
                     st.plotly_chart(fig_pps_def, use_container_width=True)
 
-# ----------------- VIEW 3: SCOUTING JUGADORS (FASE B: EYBL ONE-PAGER) -----------------
+# ----------------- VIEW 3: SCOUTING JUGADORS (PERFIL EYBL CORREGIT) -----------------
 elif view == "Scouting Jugadors":
     st.title(f"Scouting de Jugadors ({selected_season.replace('_', ' ')})")
     
@@ -907,7 +950,11 @@ elif view == "Scouting Jugadors":
         
         master_players["MinPerGame"] = master_players["TIME"].apply(parse_time_to_minutes)
         
-        # 1. Selector Superior del Jugador a Analitzar
+        # Carreguem tots els partits de la temporada un cop en memòria cau
+        pbp_cache_key = get_dir_cache_key(BOX_DIR)
+        season_logs_df = load_all_season_player_gamelogs(BOX_DIR, pbp_cache_key)
+        
+        # Selector Superior del Jugador
         scout_p_teams = ["Tots els equips"] + sorted(list(master_players["Team"].dropna().unique()))
         col_s1, col_s2 = st.columns([1.5, 2.5])
         with col_s1:
@@ -926,11 +973,23 @@ elif view == "Scouting Jugadors":
         p_num = extract_player_number(selected_player_card)
         p_clean_display = re.sub(r'^#\d+\s+', '', selected_player_card).strip()
         
+        # Filtrem i ordenem cronològicament els partits reals del jugador seleccionat
+        p_clean_target = clean_player_name_for_matching(selected_player_card)
+        if not season_logs_df.empty:
+            player_logs = season_logs_df[season_logs_df["Clean_Name"] == p_clean_target].copy()
+            # Ordenem per jornada si existeix, o pel nom del fitxer
+            if "Round_Num" in player_logs.columns and player_logs["Round_Num"].notna().any():
+                player_logs = player_logs.sort_values(by="Round_Num").reset_index(drop=True)
+            else:
+                player_logs = player_logs.reset_index(drop=True)
+        else:
+            player_logs = pd.DataFrame()
+            
         # PESTANYES DE NAVEGACIÓ: FITXA EYBL vs. RÀNQUING GLOBAL
         tab_eybl, tab_global_table = st.tabs(["👤 Fitxa d'Scouting Individual (Perfil EYBL)", "📋 Rànquings & Taula de Lliga"])
         
         with tab_eybl:
-            # --- CAPÇALERA D'IDENTITAT ESTIL TARGETA EYBL ---
+            # --- CAPÇALERA D'IDENTITAT ---
             st.markdown(
                 f"""
                 <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 18px 24px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
@@ -952,12 +1011,11 @@ elif view == "Scouting Jugadors":
                 unsafe_allow_html=True
             )
             
-            # --- LAYOUT PRINCIPAL EN 3 COLUMNES IDÈNTIC A LA FOTO ---
             col_c1, col_c2, col_c3 = st.columns([1.05, 1.35, 1.15])
             
             # ========== COLUMNA 1: PRODUCCIÓ, RADAR I TAXES DE TIR ==========
             with col_c1:
-                # 1. Season production (KPIs)
+                # 1. Season production
                 st.markdown(
                     f"""
                     <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px; margin-bottom: 14px;">
@@ -1020,13 +1078,7 @@ elif view == "Scouting Jugadors":
                 else:
                     st.plotly_chart(fig_v_rad, use_container_width=True)
                 
-                # 3. Scoring by game (Gràfic de barres cronològic)
-                pbp_cache_key = get_dir_cache_key(BOX_DIR)
-                season_logs_df = load_all_season_player_gamelogs(BOX_DIR, pbp_cache_key)
-                
-                p_clean_target = clean_player_name_for_matching(selected_player_card)
-                player_logs = season_logs_df[season_logs_df["Clean_Name"] == p_clean_target].copy() if not season_logs_df.empty else pd.DataFrame()
-                
+                # 3. Scoring by game (Gràfic cronològic net i ordenat)
                 high_pts = player_logs["PTS"].max() if not player_logs.empty else p_row["PTS"]
                 
                 st.markdown(
@@ -1045,12 +1097,17 @@ elif view == "Scouting Jugadors":
                 )
                 
                 if not player_logs.empty:
-                    player_logs["Game_Index"] = [f"J{i+1}" for i in range(len(player_logs))]
+                    # Si tenim la jornada exacta (ex: J1, J2) la fem servir; si no, P1, P2...
+                    player_logs["Game_Label"] = [
+                        f"{r['Round_Str']}" if r.get("Round_Str") else f"P{i+1}" 
+                        for i, (_, r) in enumerate(player_logs.iterrows())
+                    ]
+                    
                     fig_sc_trend = px.bar(
                         player_logs, 
-                        x="Game_Index", 
+                        x="Game_Label", 
                         y="PTS",
-                        hover_data=["Opponent", "PTS", "TIME"],
+                        hover_data={"Game_Label": True, "Opponent": True, "PTS": True, "TIME": True},
                         color_discrete_sequence=["#2dd4bf"]
                     )
                     fig_sc_trend.update_layout(
@@ -1061,19 +1118,51 @@ elif view == "Scouting Jugadors":
                         xaxis=dict(showgrid=False, title=None, tickfont=dict(size=9, color="#9ca3af")),
                         yaxis=dict(showgrid=True, gridcolor="#1f2937", title=None, tickfont=dict(size=9, color="#9ca3af"))
                     )
-                    st.plotly_chart(fig_sc_trend, use_container_width=True)
+                    st.plotly_chart(fig_sc_trend, use_container_width=True, config={"displayModeBar": False})
                 else:
                     st.caption("No s'han trobat partits individuals als boxscores per fer el gràfic de tendència.")
                     
-                # 4. Box shooting & rates (Caixes inferiors)
-                fga_2p = (p_row.get("Rim FGA", 0) + p_row.get("Paint FGA", 0) + p_row.get("MR FGA", 0))
-                fga_3p = (p_row.get("Cor3 FGA", 0) + p_row.get("ATB3 FGA", 0))
-                tot_fga = p_row["FGA"] if p_row["FGA"] > 0 else (fga_2p + fga_3p)
-                
-                pct_3p = (p_row.get("Cor3 %", 0) + p_row.get("ATB3 %", 0)) / 2.0 if fga_3p > 0 else 0.0
-                fg_pct_est = (p_row["eFG%"] * 0.95) if p_row["eFG%"] > 0 else 40.0
-                ft_pct_val = p_row.get("FT%", 72.0)
-                
+                # 4. Box shooting & rates (Càlculs 100% reals a partir de totals de tir)
+                if not player_logs.empty and player_logs["3PA"].sum() > 0:
+                    tot_3pm = int(player_logs["3PM"].sum())
+                    tot_3pa = int(player_logs["3PA"].sum())
+                    pct_3p = (tot_3pm / tot_3pa * 100.0)
+                    
+                    tot_2pm = int(player_logs["2PM"].sum())
+                    tot_2pa = int(player_logs["2PA"].sum())
+                    tot_fgm = tot_2pm + tot_3pm
+                    tot_fga = tot_2pa + tot_3pa
+                    pct_fg = (tot_fgm / tot_fga * 100.0) if tot_fga > 0 else 0.0
+                    
+                    tot_ftm = int(player_logs["FTM"].sum())
+                    tot_fta = int(player_logs["FTA"].sum())
+                    pct_ft = (tot_ftm / tot_fta * 100.0) if tot_fta > 0 else 0.0
+                else:
+                    # Càlcul ponderat per zones si no hi ha logs
+                    c3_a = p_row.get("Cor3 FGA", 0.0)
+                    atb_a = p_row.get("ATB3 FGA", 0.0)
+                    tot_3pa_pg = c3_a + atb_a
+                    c3_m = p_row.get("Cor3 FGM", c3_a * (p_row.get("Cor3 %", 0.0) / 100.0))
+                    atb_m = p_row.get("ATB3 FGM", atb_a * (p_row.get("ATB3 %", 0.0) / 100.0))
+                    tot_3pm_pg = c3_m + atb_m
+                    pct_3p = (tot_3pm_pg / tot_3pa_pg * 100.0) if tot_3pa_pg > 0 else 0.0
+                    tot_3pm = int(round(tot_3pm_pg * p_gp))
+                    tot_3pa = int(round(tot_3pa_pg * p_gp))
+                    
+                    fga_2p = p_row.get("Rim FGA", 0) + p_row.get("Paint FGA", 0) + p_row.get("MR FGA", 0)
+                    fgm_2p = (p_row.get("Rim FGA", 0) * p_row.get("Rim %", 0)/100 + 
+                              p_row.get("Paint FGA", 0) * p_row.get("Paint %", 0)/100 + 
+                              p_row.get("MR FGA", 0) * p_row.get("MR %", 0)/100)
+                    tot_fgm_pg = fgm_2p + tot_3pm_pg
+                    tot_fga_pg = fga_2p + tot_3pa_pg
+                    pct_fg = (tot_fgm_pg / tot_fga_pg * 100.0) if tot_fga_pg > 0 else 0.0
+                    tot_fgm = int(round(tot_fgm_pg * p_gp))
+                    tot_fga = int(round(tot_fga_pg * p_gp))
+                    
+                    pct_ft = float(p_row.get("FT%", 73.2))
+                    tot_ftm = int(round(float(p_row.get("FTM", 0)) * p_gp))
+                    tot_fta = int(round(float(p_row.get("FTA", 0)) * p_gp))
+
                 st.markdown(
                     f"""
                     <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px;">
@@ -1081,15 +1170,18 @@ elif view == "Scouting Jugadors":
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; text-align: center;">
                             <div style="background-color: #1f2937; padding: 8px; border-radius: 6px;">
                                 <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">FG%</div>
-                                <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{fg_pct_est:.1f}%</div>
+                                <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{pct_fg:.1f}%</div>
+                                <div style="color: #9ca3af; font-size: 0.65rem;">{tot_fgm}/{tot_fga}</div>
                             </div>
                             <div style="background-color: #1f2937; padding: 8px; border-radius: 6px;">
                                 <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">3P%</div>
                                 <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{pct_3p:.1f}%</div>
+                                <div style="color: #9ca3af; font-size: 0.65rem;">{tot_3pm}/{tot_3pa}</div>
                             </div>
                             <div style="background-color: #1f2937; padding: 8px; border-radius: 6px;">
                                 <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">FT%</div>
-                                <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{ft_pct_val:.1f}%</div>
+                                <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{pct_ft:.1f}%</div>
+                                <div style="color: #9ca3af; font-size: 0.65rem;">{tot_ftm}/{tot_fta} if tot_fta > 0 else ""</div>
                             </div>
                             <div style="background-color: #1f2937; padding: 8px; border-radius: 6px;">
                                 <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">TS%</div>
@@ -1120,7 +1212,6 @@ elif view == "Scouting Jugadors":
                     unsafe_allow_html=True
                 )
                 
-                # Càlcul de percentils dinàmics de lliga sobre jugadors que hagin jugat almenys 3 partits
                 qual_df = master_players[master_players["GamesPlayed"] >= 3].copy()
                 if qual_df.empty or len(qual_df) < 5:
                     qual_df = master_players.copy()
@@ -1172,13 +1263,13 @@ elif view == "Scouting Jugadors":
                 st.markdown(render_eybl_bar("Tir Efectiu (eFG%)", f"{p_row['eFG%']:.1f}%", p_efg), unsafe_allow_html=True)
                 st.markdown(render_eybl_bar("True Shooting (TS%)", f"{p_row['TS%']:.1f}%", p_ts), unsafe_allow_html=True)
                 st.markdown(render_eybl_bar("Encert Triple (3P%)", f"{pct_3p:.1f}%", p_3p), unsafe_allow_html=True)
-                st.markdown(render_eybl_bar("Tirs Lliures (FT%)", f"{ft_pct_val:.1f}%", p_ft), unsafe_allow_html=True)
+                st.markdown(render_eybl_bar("Tirs Lliures (FT%)", f"{pct_ft:.1f}%", p_ft), unsafe_allow_html=True)
                 st.markdown(render_eybl_bar("Forçar Tirs Lliures (FTR)", f"{p_row.get('FTR', 0):.2f}", p_ftr), unsafe_allow_html=True)
                 
                 # BLOC 3: VALORACIÓ & CONTRIBUCIÓ
                 st.markdown("<div style='color: #9ca3af; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 18px; margin-bottom: 8px;'>VALORACIÓ & CURA DE PILOTA</div>", unsafe_allow_html=True)
                 p_efi = get_pctile("EFI", p_row["EFI"])
-                p_to = get_pctile("TO%cal", p_row["TO%cal"], invert=True) # Menys pèrdues = millor percentil
+                p_to = get_pctile("TO%cal", p_row["TO%cal"], invert=True)
                 p_fplus = get_pctile("F+", p_row.get("F+", 0))
                 
                 st.markdown(render_eybl_bar("Valoració / Partit", f"{p_row['EFI']:.1f}", p_efi), unsafe_allow_html=True)
@@ -1189,7 +1280,7 @@ elif view == "Scouting Jugadors":
                 
             # ========== COLUMNA 3: DISTRIBUCIÓ DE TIR I PARTITS RECENTS ==========
             with col_c3:
-                # 1. Shot distribution (Zones vs Copa Cat)
+                # 1. Shot distribution
                 st.markdown(
                     """
                     <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px; margin-bottom: 14px;">
@@ -1233,12 +1324,12 @@ elif view == "Scouting Jugadors":
                     )
                 st.markdown("</div>", unsafe_allow_html=True)
                 
-                # 2. Recent box scores (Partits recents)
+                # 2. Recent box scores (Cronologia exacta dels últims partits)
                 st.markdown(
                     """
                     <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px;">
                         <div style="color: #f9fafb; font-size: 0.95rem; font-weight: 700; margin-bottom: 2px;">Recent box scores</div>
-                        <div style="color: #6b7280; font-size: 0.75rem; margin-bottom: 10px;">PTS / EFI / MIN &bull; Últims partits</div>
+                        <div style="color: #6b7280; font-size: 0.75rem; margin-bottom: 10px;">PTS / EFI / MIN &bull; Últims partits jugats</div>
                     """,
                     unsafe_allow_html=True
                 )
@@ -1248,12 +1339,15 @@ elif view == "Scouting Jugadors":
                     for _, r_log in recent_5.iterrows():
                         fgm_tot = int(r_log["2PM"] + r_log["3PM"])
                         fga_tot = int(r_log["2PA"] + r_log["3PA"])
+                        r_label = f"[{r_log['Round_Str']}] " if r_log.get("Round_Str") else ""
+                        score_info = f" &bull; {r_log['Score_Result']}" if r_log.get("Score_Result") else ""
+                        
                         st.markdown(
                             f"""
-                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding: 6px 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding: 7px 0;">
                                 <div>
-                                    <div style="color: #f9fafb; font-size: 0.8rem; font-weight: 700;">vs {r_log['Opponent']}</div>
-                                    <div style="color: #6b7280; font-size: 0.72rem;">{r_log['TIME']} &bull; FG: {fgm_tot}/{fga_tot}</div>
+                                    <div style="color: #f9fafb; font-size: 0.8rem; font-weight: 700;">{r_label}vs {r_log['Opponent']}</div>
+                                    <div style="color: #6b7280; font-size: 0.72rem;">{r_log['TIME']}{score_info} &bull; FG: {fgm_tot}/{fga_tot}</div>
                                 </div>
                                 <div style="text-align: right;">
                                     <div style="color: #2dd4bf; font-size: 0.95rem; font-weight: 800;">{r_log['PTS']:.0f} <span style="font-size: 0.75rem; color: #9ca3af;">PTS</span></div>
