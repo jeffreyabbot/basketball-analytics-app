@@ -253,8 +253,7 @@ def get_game_chronological_sort_key(g):
 
 # Carrega i extreu l'històric de partits de tots els jugadors ordenats cronològicament
 @st.cache_data(show_spinner=False)
-# Carrega i extreu l'històric de partits ordenats per la jornada real
-@st.cache_data(show_spinner=False)
+
 def load_all_season_player_gamelogs(box_dir, pbp_dir, cache_key):
     if not box_dir or not os.path.exists(box_dir):
         return pd.DataFrame()
@@ -1300,6 +1299,11 @@ elif view == "Scouting Jugadors":
                 
             # ========== COLUMNA 3: DISTRIBUCIÓ DE TIR I PARTITS RECENTS ==========
             with col_c3:
+                # Funció per netejar espais i evitar que Markdown ho mostri com a codi
+                def render_html(html_str):
+                    clean = "".join(line.strip() for line in html_str.splitlines())
+                    st.markdown(clean, unsafe_allow_html=True)
+
                 # 1. Shot distribution
                 zones_scout = [
                     ("Rim", "Cèrcol (Rim)", p_row.get("Rim %", 0), league_avg_dict["Rim_Pct"], p_row.get("Rim FGA", 0)),
@@ -1339,7 +1343,7 @@ elif view == "Scouting Jugadors":
                     {rows_html}
                 </div>
                 """
-                st.markdown(textwrap.dedent(shot_dist_html), unsafe_allow_html=True)
+                render_html(shot_dist_html)
                 
                 # 2. Recent box scores
                 recent_rows_html = ""
@@ -1373,7 +1377,7 @@ elif view == "Scouting Jugadors":
                     {recent_rows_html}
                 </div>
                 """
-                st.markdown(textwrap.dedent(recent_box_html), unsafe_allow_html=True)
+                render_html(recent_box_html)
                 
                 # 2. Recent box scores (Cronologia exacta dels últims partits)
                 st.markdown(
