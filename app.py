@@ -1209,22 +1209,32 @@ elif view == "Scouting Jugadors":
                     )
                     st.plotly_chart(fig_sc_trend, use_container_width=True, config={"displayModeBar": False})
 
-                # 4. Box shooting & rates (Amb comptador net a FT%)
+                # 4. Box shooting & rates (Amb 2P% en comptes de FG%)
                 if not player_logs.empty and player_logs["3PA"].sum() > 0:
-                    tot_3pm = int(player_logs["3PM"].sum())
-                    tot_3pa = int(player_logs["3PA"].sum())
-                    pct_3p = (tot_3pm / tot_3pa * 100.0)
-                    
                     tot_2pm = int(player_logs["2PM"].sum())
                     tot_2pa = int(player_logs["2PA"].sum())
-                    tot_fgm = tot_2pm + tot_3pm
-                    tot_fga = tot_2pa + tot_3pa
-                    pct_fg = (tot_fgm / tot_fga * 100.0) if tot_fga > 0 else 0.0
+                    pct_2p = (tot_2pm / tot_2pa * 100.0) if tot_2pa > 0 else 0.0
+
+                    tot_3pm = int(player_logs["3PM"].sum())
+                    tot_3pa = int(player_logs["3PA"].sum())
+                    pct_3p = (tot_3pm / tot_3pa * 100.0) if tot_3pa > 0 else 0.0
                     
                     tot_ftm = int(player_logs["FTM"].sum())
                     tot_fta = int(player_logs["FTA"].sum())
                     pct_ft = (tot_ftm / tot_fta * 100.0) if tot_fta > 0 else 0.0
+
+                    tot_fga = tot_2pa + tot_3pa
+                    p_3par = (tot_3pa / tot_fga * 100.0) if tot_fga > 0 else 0.0
                 else:
+                    # Càlcul de reserva per zones si no hi ha logs individuals
+                    fga_2p = p_row.get("Rim FGA", 0) + p_row.get("Paint FGA", 0) + p_row.get("MR FGA", 0)
+                    fgm_2p = (p_row.get("Rim FGA", 0) * p_row.get("Rim %", 0)/100 + 
+                              p_row.get("Paint FGA", 0) * p_row.get("Paint %", 0)/100 + 
+                              p_row.get("MR FGA", 0) * p_row.get("MR %", 0)/100)
+                    pct_2p = (fgm_2p / fga_2p * 100.0) if fga_2p > 0 else 0.0
+                    tot_2pm = int(round(fgm_2p * p_gp))
+                    tot_2pa = int(round(fga_2p * p_gp))
+
                     c3_a = p_row.get("Cor3 FGA", 0.0)
                     atb_a = p_row.get("ATB3 FGA", 0.0)
                     tot_3pa_pg = c3_a + atb_a
@@ -1233,22 +1243,15 @@ elif view == "Scouting Jugadors":
                     pct_3p = ((c3_m + atb_m) / tot_3pa_pg * 100.0) if tot_3pa_pg > 0 else 0.0
                     tot_3pm = int(round((c3_m + atb_m) * p_gp))
                     tot_3pa = int(round(tot_3pa_pg * p_gp))
-                    
-                    fga_2p = p_row.get("Rim FGA", 0) + p_row.get("Paint FGA", 0) + p_row.get("MR FGA", 0)
-                    fgm_2p = (p_row.get("Rim FGA", 0) * p_row.get("Rim %", 0)/100 + 
-                              p_row.get("Paint FGA", 0) * p_row.get("Paint %", 0)/100 + 
-                              p_row.get("MR FGA", 0) * p_row.get("MR %", 0)/100)
-                    pct_fg = ((fgm_2p + c3_m + atb_m) / (fga_2p + tot_3pa_pg) * 100.0) if (fga_2p + tot_3pa_pg) > 0 else 0.0
-                    tot_fgm = int(round((fgm_2p + c3_m + atb_m) * p_gp))
-                    tot_fga = int(round((fga_2p + tot_3pa_pg) * p_gp))
-                    
+
                     pct_ft = float(p_row.get("FT%", 73.2))
                     tot_ftm = int(round(float(p_row.get("FTM", 0)) * p_gp))
                     tot_fta = int(round(float(p_row.get("FTA", 0)) * p_gp))
-                    
-                p_3par = (tot_3pa / tot_fga * 100.0) if tot_fga > 0 else 0.0
+
+                    tot_fga = tot_2pa + tot_3pa
+                    p_3par = (tot_3pa / tot_fga * 100.0) if tot_fga > 0 else 0.0
+
                 ft_count_str = f"{tot_ftm}/{tot_fta}" if tot_fta > 0 else ""
-                
 
                 st.markdown(
                     f"""
@@ -1256,9 +1259,9 @@ elif view == "Scouting Jugadors":
                         <div style="color: #9ca3af; font-size: 0.82rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Box shooting & rates</div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; text-align: center;">
                             <div style="background-color: #1f2937; padding: 8px; border-radius: 6px;">
-                                <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">FG%</div>
-                                <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{pct_fg:.1f}%</div>
-                                <div style="color: #9ca3af; font-size: 0.65rem;">{tot_fgm}/{tot_fga}</div>
+                                <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">2P%</div>
+                                <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{pct_2p:.1f}%</div>
+                                <div style="color: #9ca3af; font-size: 0.65rem;">{tot_2pm}/{tot_2pa}</div>
                             </div>
                             <div style="background-color: #1f2937; padding: 8px; border-radius: 6px;">
                                 <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">3P%</div>
@@ -1278,7 +1281,7 @@ elif view == "Scouting Jugadors":
                                 <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">eFG%</div>
                                 <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{p_row['eFG%']:.1f}%</div>
                             </div>
-                            <div style="background-color: #1f2937; padding: 8px; border-radius: 6px;">
+                            <div style="background-color: #1f2937; padding: 8px; border-radius: 6px; margin-bottom: 24px;">
                                 <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">3PAr</div>
                                 <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{p_3par:.1f}%</div>
                                 <div style="color: #9ca3af; font-size: 0.65rem;">Freq Triple</div>
@@ -1397,16 +1400,6 @@ elif view == "Scouting Jugadors":
                         r_label = f"[{r_log['Round_Str']}] " if r_log.get("Round_Str") else ""
                         score_info = f" &bull; {r_log['Score_Result']}" if r_log.get("Score_Result") else ""
                         
-                        # 3. Recent box scores (Càlculs fora de l'HTML i sense duplicats)
-                recent_rows_html = ""
-                if not player_logs.empty:
-                    recent_5 = player_logs.tail(5).iloc[::-1]
-                    for _, r_log in recent_5.iterrows():
-                        fgm_tot = int(r_log["2PM"] + r_log["3PM"])
-                        fga_tot = int(r_log["2PA"] + r_log["3PA"])
-                        r_label = f"[{r_log['Round_Str']}] " if r_log.get("Round_Str") else ""
-                        score_info = f" &bull; {r_log['Score_Result']}" if r_log.get("Score_Result") else ""
-                        
                         # Càlcul de PPS del partit (correctament fora de la cadena HTML)
                         pts_fg_game = (r_log['2PM'] * 2.0 + r_log['3PM'] * 3.0)
                         pps_game = (pts_fg_game / fga_tot) if fga_tot > 0 else 0.0
@@ -1427,7 +1420,7 @@ elif view == "Scouting Jugadors":
                     recent_rows_html = "<div style='color: #9ca3af; font-size: 0.8rem;'>Sense registre de partits individuals.</div>"
 
                 recent_box_html = f"""
-                <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px;">
+                <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px; margin-bottom: 24px;">
                     <div style="color: #f9fafb; font-size: 0.95rem; font-weight: 700; margin-bottom: 2px;">Recent box scores</div>
                     <div style="color: #9ca3af; font-size: 0.75rem; margin-bottom: 10px;">PTS / PPS / MIN &bull; Últims partits jugats</div>
                     {recent_rows_html}
