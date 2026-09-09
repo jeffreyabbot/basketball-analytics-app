@@ -1,0 +1,4 @@
+Els radars i les mètriques ocupen la meitat de la pantalla i es veuen grans i nítids fins i tot a portàtils petits.
+L'escut del club apareix al capdamunt al costat del dorsal.
+El càlcul de Copa Cat és el percentatge ponderat real (∑FGM/∑FGA∑FGM/∑FGA).
+El text erroni d'FT% ha desaparegut i els Recent Boxscores estan nets i sense cap duplicació.
