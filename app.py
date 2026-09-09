@@ -966,6 +966,7 @@ elif view == "Scouting Jugadors":
         master_players["FTR"] = pd.to_numeric(master_players.get("FTR", 0.0), errors='coerce').fillna(0.0)
         master_players["F+"] = pd.to_numeric(master_players.get("F+", 0.0), errors='coerce').fillna(0.0)
         
+        
         for col in ["Rim FGA", "Paint FGA", "MR FGA", "Cor3 FGA", "ATB3 FGA", "Rim %", "Paint %", "MR %", "Cor3 %", "ATB3 %", "FT%"]:
             if col in master_players.columns:
                 master_players[col] = pd.to_numeric(master_players[col], errors='coerce').fillna(0.0)
@@ -987,6 +988,7 @@ elif view == "Scouting Jugadors":
         master_players["PPS_Global"] = (tot_pts_fg_all / tot_fga_all).fillna(0.0)
         master_players["PPS_2P"] = (2.0 * fgm_2p_all / fga_2p_all).fillna(0.0)
         master_players["PPS_3P"] = (3.0 * fgm_3p_all / fga_3p_all).fillna(0.0)
+        master_players["3PAr"] = (fga_3p_all / tot_fga_all * 100.0).fillna(0.0)
         # Carreguem tots els partits de la temporada un cop en memòria cau
         pbp_cache_key = get_dir_cache_key(BOX_DIR)
         season_logs_df = load_all_season_player_gamelogs(BOX_DIR, PBP_DIR, pbp_cache_key)
@@ -1025,39 +1027,42 @@ elif view == "Scouting Jugadors":
         with tab_eybl:
             # --- CAPÇALERA D'IDENTITAT ---
             # Escut del club en base64
-            # Targeta elegant per al logo a la dreta
-            team_logo_html = ""
+            # Funció per netejar espais de qualsevol bloc HTML
+            def render_html(html_str):
+                clean = "".join(line.strip() for line in html_str.splitlines())
+                st.markdown(clean, unsafe_allow_html=True)
+
+            # Escut a la dreta amb targeta blanca neta
             team_logo_url = get_team_logo_base64_url(p_team, selected_season)
+            logo_card = ""
             if team_logo_url:
-                team_logo_html = f"""
-                <div style="background-color: #ffffff; border-radius: 8px; padding: 6px 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); height: 58px; min-width: 70px;">
-                    <img src="{team_logo_url}" style="max-height: 46px; max-width: 75px; object-fit: contain;">
+                logo_card = f"""
+                <div style="background-color: #ffffff; border-radius: 8px; padding: 4px 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); height: 56px; min-width: 65px;">
+                    <img src="{team_logo_url}" style="max-height: 46px; max-width: 70px; object-fit: contain;">
                 </div>
                 """
 
-            st.markdown(
-                f"""
-                <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 18px 24px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
-                    <div style="display: flex; align-items: center; gap: 16px;">
-                        <div style="background: linear-gradient(135deg, #1f77b4 0%, #0d3b66 100%); color: white; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.35rem; font-weight: 800; border: 2px solid rgba(255,255,255,0.2);">
-                            {p_num if p_num else "🏀"}
-                        </div>
-                        <div>
-                            <h1 style="margin: 0; color: #f9fafb; font-size: 2.1rem; font-weight: 800; line-height: 1.1;">{p_clean_display}</h1>
-                            <div style="color: #9ca3af; font-size: 1.05rem; font-weight: 500; margin-top: 4px;">{p_team} &nbsp;•&nbsp; Copa Catalunya</div>
-                        </div>
+            header_html = f"""
+            <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 18px 24px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <div style="background: linear-gradient(135deg, #1f77b4 0%, #0d3b66 100%); color: white; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.35rem; font-weight: 800; border: 2px solid rgba(255,255,255,0.2);">
+                        {p_num if p_num else "🏀"}
                     </div>
-                    <div style="display: flex; align-items: center; gap: 20px;">
-                        <div style="text-align: right;">
-                            <div style="color: #f9fafb; font-size: 1.8rem; font-weight: 800; line-height: 1.1;">{p_gp} <span style="font-size: 1.1rem; color: #9ca3af;">GP</span></div>
-                            <div style="color: #9ca3af; font-size: 0.95rem; font-weight: 500; margin-top: 4px;">{p_min} <span style="font-size: 0.8rem;">MIN/G</span></div>
-                        </div>
-                        {team_logo_html}
+                    <div>
+                        <h1 style="margin: 0; color: #f9fafb; font-size: 2.1rem; font-weight: 800; line-height: 1.1;">{p_clean_display}</h1>
+                        <div style="color: #9ca3af; font-size: 1.05rem; font-weight: 500; margin-top: 4px;">{p_team} &nbsp;•&nbsp; Copa Catalunya</div>
                     </div>
                 </div>
-                """,
-                unsafe_allow_html=True
-            )
+                <div style="display: flex; align-items: center; gap: 18px;">
+                    <div style="text-align: right;">
+                        <div style="color: #f9fafb; font-size: 1.8rem; font-weight: 800; line-height: 1.1;">{p_gp} <span style="font-size: 1.1rem; color: #9ca3af;">GP</span></div>
+                        <div style="color: #9ca3af; font-size: 0.95rem; font-weight: 500; margin-top: 4px;">{p_min} <span style="font-size: 0.8rem;">MIN/G</span></div>
+                    </div>
+                    {logo_card}
+                </div>
+            </div>
+            """
+            render_html(header_html)
             
             # DISTRIBUCIÓ EN 2 COLUMNES (PER PANTALLES DE PORTÀTIL)
             col_left, col_right = st.columns([1.05, 1.15])
@@ -1237,8 +1242,10 @@ elif view == "Scouting Jugadors":
                     pct_ft = float(p_row.get("FT%", 73.2))
                     tot_ftm = int(round(float(p_row.get("FTM", 0)) * p_gp))
                     tot_fta = int(round(float(p_row.get("FTA", 0)) * p_gp))
-
+                    
+                p_3par = (tot_3pa / tot_fga * 100.0) if tot_fga > 0 else 0.0
                 ft_count_str = f"{tot_ftm}/{tot_fta}" if tot_fta > 0 else ""
+                
 
                 st.markdown(
                     f"""
@@ -1269,8 +1276,9 @@ elif view == "Scouting Jugadors":
                                 <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{p_row['eFG%']:.1f}%</div>
                             </div>
                             <div style="background-color: #1f2937; padding: 8px; border-radius: 6px;">
-                                <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">USG%</div>
-                                <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{p_row['USG%cal']:.1f}%</div>
+                                <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">3PAr</div>
+                                <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{p_3par:.1f}%</div>
+                                <div style="color: #9ca3af; font-size: 0.65rem;">Freq Triple</div>
                             </div>
                         </div>
                     </div>
