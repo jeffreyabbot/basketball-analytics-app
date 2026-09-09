@@ -1255,7 +1255,7 @@ elif view == "Scouting Jugadors":
 
                 st.markdown(
                     f"""
-                    <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px;">
+                    <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px; margin-bottom: 24px;">
                         <div style="color: #9ca3af; font-size: 0.82rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Box shooting & rates</div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; text-align: center;">
                             <div style="background-color: #1f2937; padding: 8px; border-radius: 6px;">
