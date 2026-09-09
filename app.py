@@ -971,7 +971,22 @@ elif view == "Scouting Jugadors":
                 master_players[col] = pd.to_numeric(master_players[col], errors='coerce').fillna(0.0)
         
         master_players["MinPerGame"] = master_players["TIME"].apply(parse_time_to_minutes)
+        # Càlcul vectoritzat de PPS Global, PPS 2P i PPS 3P per a tota la lliga
+        fga_2p_all = master_players["Rim FGA"] + master_players["Paint FGA"] + master_players["MR FGA"]
+        fgm_2p_all = (master_players["Rim FGA"] * (master_players["Rim %"] / 100.0) +
+                      master_players["Paint FGA"] * (master_players["Paint %"] / 100.0) +
+                      master_players["MR FGA"] * (master_players["MR %"] / 100.0))
         
+        fga_3p_all = master_players["Cor3 FGA"] + master_players["ATB3 FGA"]
+        fgm_3p_all = (master_players["Cor3 FGA"] * (master_players["Cor3 %"] / 100.0) +
+                      master_players["ATB3 FGA"] * (master_players["ATB3 %"] / 100.0))
+        
+        tot_fga_all = fga_2p_all + fga_3p_all
+        tot_pts_fg_all = 2.0 * fgm_2p_all + 3.0 * fgm_3p_all
+        
+        master_players["PPS_Global"] = (tot_pts_fg_all / tot_fga_all).fillna(0.0)
+        master_players["PPS_2P"] = (2.0 * fgm_2p_all / fga_2p_all).fillna(0.0)
+        master_players["PPS_3P"] = (3.0 * fgm_3p_all / fga_3p_all).fillna(0.0)
         # Carreguem tots els partits de la temporada un cop en memòria cau
         pbp_cache_key = get_dir_cache_key(BOX_DIR)
         season_logs_df = load_all_season_player_gamelogs(BOX_DIR, PBP_DIR, pbp_cache_key)
@@ -1010,17 +1025,21 @@ elif view == "Scouting Jugadors":
         with tab_eybl:
             # --- CAPÇALERA D'IDENTITAT ---
             # Escut del club en base64
+            # Targeta elegant per al logo a la dreta
             team_logo_html = ""
             team_logo_url = get_team_logo_base64_url(p_team, selected_season)
             if team_logo_url:
-                team_logo_html = f'<img src="{team_logo_url}" style="max-height: 55px; max-width: 65px; object-fit: contain; margin-right: 12px;">'
+                team_logo_html = f"""
+                <div style="background-color: #ffffff; border-radius: 8px; padding: 6px 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); height: 58px; min-width: 70px;">
+                    <img src="{team_logo_url}" style="max-height: 46px; max-width: 75px; object-fit: contain;">
+                </div>
+                """
 
             st.markdown(
                 f"""
                 <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 18px 24px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
-                    <div style="display: flex; align-items: center; gap: 14px;">
-                        {team_logo_html}
-                        <div style="background: linear-gradient(135deg, #1f77b4 0%, #0d3b66 100%); color: white; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: 800; border: 2px solid rgba(255,255,255,0.2);">
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <div style="background: linear-gradient(135deg, #1f77b4 0%, #0d3b66 100%); color: white; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.35rem; font-weight: 800; border: 2px solid rgba(255,255,255,0.2);">
                             {p_num if p_num else "🏀"}
                         </div>
                         <div>
@@ -1028,9 +1047,12 @@ elif view == "Scouting Jugadors":
                             <div style="color: #9ca3af; font-size: 1.05rem; font-weight: 500; margin-top: 4px;">{p_team} &nbsp;•&nbsp; Copa Catalunya</div>
                         </div>
                     </div>
-                    <div style="text-align: right;">
-                        <div style="color: #f9fafb; font-size: 1.8rem; font-weight: 800; line-height: 1.1;">{p_gp} <span style="font-size: 1.1rem; color: #9ca3af;">GP</span></div>
-                        <div style="color: #9ca3af; font-size: 0.95rem; font-weight: 500; margin-top: 4px;">{p_min} <span style="font-size: 0.8rem;">MIN/G</span></div>
+                    <div style="display: flex; align-items: center; gap: 20px;">
+                        <div style="text-align: right;">
+                            <div style="color: #f9fafb; font-size: 1.8rem; font-weight: 800; line-height: 1.1;">{p_gp} <span style="font-size: 1.1rem; color: #9ca3af;">GP</span></div>
+                            <div style="color: #9ca3af; font-size: 0.95rem; font-weight: 500; margin-top: 4px;">{p_min} <span style="font-size: 0.8rem;">MIN/G</span></div>
+                        </div>
+                        {team_logo_html}
                     </div>
                 </div>
                 """,
@@ -1081,10 +1103,23 @@ elif view == "Scouting Jugadors":
             
             # ========== COLUMNA ESQUERRA: PRODUCCIÓ, RADARS I TAXES DE TIR ==========
             with col_left:
-                # Mitjana real d'EFI
-                efi_real = player_logs["EFI"].mean() if (not player_logs.empty and "EFI" in player_logs.columns) else p_row["EFI"]
+                # Càlcul de PPS del jugador
+                fga_2p_p = p_row.get("Rim FGA", 0) + p_row.get("Paint FGA", 0) + p_row.get("MR FGA", 0)
+                fgm_2p_p = (p_row.get("Rim FGA", 0) * (p_row.get("Rim %", 0)/100) + 
+                            p_row.get("Paint FGA", 0) * (p_row.get("Paint %", 0)/100) + 
+                            p_row.get("MR FGA", 0) * (p_row.get("MR %", 0)/100))
+                fga_3p_p = p_row.get("Cor3 FGA", 0) + p_row.get("ATB3 FGA", 0)
+                fgm_3p_p = (p_row.get("Cor3 FGA", 0) * (p_row.get("Cor3 %", 0)/100) + 
+                            p_row.get("ATB3 FGA", 0) * (p_row.get("ATB3 %", 0)/100))
                 
-                # 1. Season production
+                tot_fga_p = fga_2p_p + fga_3p_p
+                pts_fg_p = 2.0 * fgm_2p_p + 3.0 * fgm_3p_p
+                
+                pps_global_val = (pts_fg_p / tot_fga_p) if tot_fga_p > 0 else 0.0
+                pps_2p_val = (2.0 * fgm_2p_p / fga_2p_p) if fga_2p_p > 0 else 0.0
+                pps_3p_val = (3.0 * fgm_3p_p / fga_3p_p) if fga_3p_p > 0 else 0.0
+
+                # 1. Season production (Amb PPS en lloc d'EFI)
                 st.markdown(
                     f"""
                     <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px; margin-bottom: 14px;">
@@ -1096,8 +1131,8 @@ elif view == "Scouting Jugadors":
                                 <div style="color: #9ca3af; font-size: 0.72rem; font-weight: 600;">PTS/G</div>
                             </div>
                             <div>
-                                <div style="color: #f9fafb; font-size: 1.8rem; font-weight: 800;">{efi_real:.1f}</div>
-                                <div style="color: #9ca3af; font-size: 0.72rem; font-weight: 600;">EFI/G</div>
+                                <div style="color: #2dd4bf; font-size: 1.8rem; font-weight: 800;">{pps_global_val:.2f}</div>
+                                <div style="color: #9ca3af; font-size: 0.72rem; font-weight: 600;">PPS (Pts/Tir)</div>
                             </div>
                             <div>
                                 <div style="color: #f9fafb; font-size: 1.8rem; font-weight: 800;">{p_row['FGA']:.1f}</div>
@@ -1292,10 +1327,10 @@ elif view == "Scouting Jugadors":
                     {render_eybl_bar("Tirs Lliures (FT%)", f"{pct_ft:.1f}%", get_pctile("FT%", p_row.get("FT%", 70)))}
                     {render_eybl_bar("Forçar Tirs Lliures (FTR)", f"{p_row.get('FTR', 0):.2f}", get_pctile("FTR", p_row.get("FTR", 0.2)))}
                     
-                    <div style='color: #9ca3af; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 14px; margin-bottom: 6px;'>VALORACIÓ & CURA DE PILOTA</div>
-                    {render_eybl_bar("Valoració / Partit", f"{efi_real:.1f}", get_pctile("EFI", p_row["EFI"]))}
-                    {render_eybl_bar("Cura de Pilota (TO%)", f"{p_row['TO%cal']:.1f}%", get_pctile("TO%cal", p_row["TO%cal"], invert=True))}
-                    {render_eybl_bar("Faltes Rebudes (F+)", f"{p_row.get('F+', 0):.1f}", get_pctile("F+", p_row.get("F+", 0)))}
+                    <div style='color: #9ca3af; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 14px; margin-bottom: 6px;'>PUNTS PER TIR (PPS)</div>
+                    {render_eybl_bar("PPS Global (Pts/Tir)", f"{pps_global_val:.2f}", get_pctile("PPS_Global", pps_global_val))}
+                    {render_eybl_bar("PPS Tir de 2 (2P)", f"{pps_2p_val:.2f}", get_pctile("PPS_2P", pps_2p_val))}
+                    {render_eybl_bar("PPS Tir de 3 (3P)", f"{pps_3p_val:.2f}", get_pctile("PPS_3P", pps_3p_val))}
                 </div>
                 """
                 render_html(adv_bars_html)
@@ -1351,6 +1386,20 @@ elif view == "Scouting Jugadors":
                         r_label = f"[{r_log['Round_Str']}] " if r_log.get("Round_Str") else ""
                         score_info = f" &bull; {r_log['Score_Result']}" if r_log.get("Score_Result") else ""
                         
+                        # 3. Recent box scores (Càlculs fora de l'HTML i sense duplicats)
+                recent_rows_html = ""
+                if not player_logs.empty:
+                    recent_5 = player_logs.tail(5).iloc[::-1]
+                    for _, r_log in recent_5.iterrows():
+                        fgm_tot = int(r_log["2PM"] + r_log["3PM"])
+                        fga_tot = int(r_log["2PA"] + r_log["3PA"])
+                        r_label = f"[{r_log['Round_Str']}] " if r_log.get("Round_Str") else ""
+                        score_info = f" &bull; {r_log['Score_Result']}" if r_log.get("Score_Result") else ""
+                        
+                        # Càlcul de PPS del partit (correctament fora de la cadena HTML)
+                        pts_fg_game = (r_log['2PM'] * 2.0 + r_log['3PM'] * 3.0)
+                        pps_game = (pts_fg_game / fga_tot) if fga_tot > 0 else 0.0
+
                         recent_rows_html += f"""
                         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding: 7px 0;">
                             <div>
@@ -1359,7 +1408,7 @@ elif view == "Scouting Jugadors":
                             </div>
                             <div style="text-align: right;">
                                 <div style="color: #2dd4bf; font-size: 0.95rem; font-weight: 800;">{r_log['PTS']:.0f} <span style="font-size: 0.75rem; color: #9ca3af;">PTS</span></div>
-                                <div style="color: #9ca3af; font-size: 0.72rem;">{r_log['EFI']:.0f} EFI</div>
+                                <div style="color: #9ca3af; font-size: 0.72rem;">{pps_game:.2f} PPS</div>
                             </div>
                         </div>
                         """
@@ -1369,7 +1418,7 @@ elif view == "Scouting Jugadors":
                 recent_box_html = f"""
                 <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px;">
                     <div style="color: #f9fafb; font-size: 0.95rem; font-weight: 700; margin-bottom: 2px;">Recent box scores</div>
-                    <div style="color: #9ca3af; font-size: 0.75rem; margin-bottom: 10px;">PTS / EFI / MIN &bull; Últims partits jugats</div>
+                    <div style="color: #9ca3af; font-size: 0.75rem; margin-bottom: 10px;">PTS / PPS / MIN &bull; Últims partits jugats</div>
                     {recent_rows_html}
                 </div>
                 """
