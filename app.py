@@ -1063,7 +1063,10 @@ elif view == "Scouting Jugadors":
             </div>
             """
             render_html(header_html)
-            
+            # Càlcul del 3PAr del jugador (% de tirs que són triples)
+            fga_3p_p = p_row.get("Cor3 FGA", 0.0) + p_row.get("ATB3 FGA", 0.0)
+            tot_fga_p = p_row["FGA"] if p_row["FGA"] > 0 else (p_row.get("Rim FGA", 0) + p_row.get("Paint FGA", 0) + p_row.get("MR FGA", 0) + fga_3p_p)
+            p_3par = (fga_3p_p / tot_fga_p * 100.0) if tot_fga_p > 0 else 0.0
             # DISTRIBUCIÓ EN 2 COLUMNES (PER PANTALLES DE PORTÀTIL)
             col_left, col_right = st.columns([1.05, 1.15])
             
@@ -1325,7 +1328,7 @@ elif view == "Scouting Jugadors":
                     <div style='color: #9ca3af; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 6px; margin-bottom: 6px;'>CREACIÓ & VOLUM DE TIR</div>
                     {render_eybl_bar("Punts / Partit", f"{p_row['PTS']:.1f}", get_pctile("PTS", p_row["PTS"]))}
                     {render_eybl_bar("Tirs Intentats (FGA)", f"{p_row['FGA']:.1f}", get_pctile("FGA", p_row["FGA"]))}
-                    {render_eybl_bar("Ús de Possessió (USG%)", f"{p_row['USG%cal']:.1f}%", get_pctile("USG%cal", p_row["USG%cal"]))}
+                    {render_eybl_bar("Ràtio Triples (3PAr)", f"{p_3par:.1f}%", get_pctile("3PAr", p_3par))}
                     {render_eybl_bar("Minuts / Partit", f"{p_row['MinPerGame']:.1f}'", get_pctile("MinPerGame", p_row["MinPerGame"]))}
                     
                     <div style='color: #9ca3af; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 14px; margin-bottom: 6px;'>EFICIÈNCIA & ENCERT</div>
