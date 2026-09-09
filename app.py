@@ -1281,7 +1281,7 @@ elif view == "Scouting Jugadors":
                                 <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">eFG%</div>
                                 <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{p_row['eFG%']:.1f}%</div>
                             </div>
-                            <div style="background-color: #1f2937; padding: 8px; border-radius: 6px; margin-bottom: 24px;">
+                            <div style="background-color: #1f2937; padding: 8px; border-radius: 6px;">
                                 <div style="color: #9ca3af; font-size: 0.7rem; font-weight: 600;">3PAr</div>
                                 <div style="color: #f9fafb; font-size: 1.15rem; font-weight: 800;">{p_3par:.1f}%</div>
                                 <div style="color: #9ca3af; font-size: 0.65rem;">Freq Triple</div>
