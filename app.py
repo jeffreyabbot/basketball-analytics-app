@@ -989,6 +989,8 @@ elif view == "Scouting Jugadors":
         master_players["PPS_2P"] = (2.0 * fgm_2p_all / fga_2p_all).fillna(0.0)
         master_players["PPS_3P"] = (3.0 * fgm_3p_all / fga_3p_all).fillna(0.0)
         master_players["3PAr"] = (fga_3p_all / tot_fga_all * 100.0).fillna(0.0)
+        master_players["2P%"] = (fgm_2p_all / fga_2p_all * 100.0).fillna(0.0)
+        master_players["3P%"] = (fgm_3p_all / fga_3p_all * 100.0).fillna(0.0)
         # Carreguem tots els partits de la temporada un cop en memòria cau
         pbp_cache_key = get_dir_cache_key(BOX_DIR)
         season_logs_df = load_all_season_player_gamelogs(BOX_DIR, PBP_DIR, pbp_cache_key)
@@ -1430,48 +1432,100 @@ elif view == "Scouting Jugadors":
                 
         # --- PESTANYA 2: RÀNQUINGS & TAULA GLOBAL DE LLIGA ---
         with tab_global_table:
-            st.write("Motor de cerca i rànquing complet de tots els jugadors de la lliga:")
+            st.write("Motor de cerca i rànquings oficials de jugadors de la lliga:")
             
-            col_filt1, col_filt2, col_filt3 = st.columns(3)
+            # Sincronització amb els selectors superiors
+            col_tf1, col_tf2 = st.columns([1.5, 2.5])
+            with col_tf1:
+                if filter_team_card != "Tots els equips":
+                    filter_by_team = st.checkbox(f"Filtrar només per l'equip seleccionat ({filter_team_card})", value=True)
+                else:
+                    filter_by_team = False
+            with col_tf2:
+                filter_by_player = st.checkbox(f"Mostrar només a {p_clean_display}", value=False)
+            
+            # Filtres numèrics i ordenació
+            col_filt1, col_filt2, col_filt3, col_filt4 = st.columns(4)
             with col_filt1:
-                min_games = st.slider("Mínim de partits jugats", 1, int(master_players["GamesPlayed"].max() or 20), 3)
+                sort_metric_sel = st.selectbox(
+                    "Ordenar per:", 
+                    ["Punts (PTS)", "Punts per Tir (PPS)", "Tir Efectiu (eFG%)", "2P%", "3P%", "Ràtio Triples (3PAr)", "Partits Jugats", "Minuts/p"],
+                    index=0
+                )
             with col_filt2:
-                min_fga = st.slider("Mínim de FGA per partit", 0.0, float(master_players["FGA"].max() or 20.0), 2.0, step=0.5)
+                min_games = st.slider("Mínim de partits", 1, int(master_players["GamesPlayed"].max() or 20), 3)
             with col_filt3:
-                min_mins = st.slider("Mínim de minuts per partit", 0.0, float(master_players["MinPerGame"].max() or 40.0), 8.0, step=1.0)
+                min_fga = st.slider("Mínim FGA/p (Volum)", 0.0, float(master_players["FGA"].max() or 20.0), 2.0, step=0.5)
+            with col_filt4:
+                min_mins = st.slider("Mínim min/p", 0.0, float(master_players["MinPerGame"].max() or 40.0), 8.0, step=1.0)
                 
-            sorted_players = master_players[
-                (master_players["GamesPlayed"] >= min_games) &
-                (master_players["FGA"] >= min_fga) &
-                (master_players["MinPerGame"] >= min_mins)
-            ].sort_values("PTS", ascending=False)
+            sort_map = {
+                "Punts (PTS)": "PTS",
+                "Punts per Tir (PPS)": "PPS_Global",
+                "Tir Efectiu (eFG%)": "eFG%",
+                "2P%": "2P%",
+                "3P%": "3P%",
+                "Ràtio Triples (3PAr)": "3PAr",
+                "Partits Jugats": "GamesPlayed",
+                "Minuts/p": "MinPerGame"
+            }
+            
+            # Aplicació dels filtres
+            table_df = master_players.copy()
+            if filter_by_team and filter_team_card != "Tots els equips":
+                table_df = table_df[table_df["Team"] == filter_team_card]
+            if filter_by_player:
+                table_df = table_df[table_df["JUGADOR"] == selected_player_card]
+                
+            filtered_table = table_df[
+                (table_df["GamesPlayed"] >= min_games) &
+                (table_df["FGA"] >= min_fga) &
+                (table_df["MinPerGame"] >= min_mins)
+            ].sort_values(sort_map[sort_metric_sel], ascending=False)
             
             view_cols = [
-                "JUGADOR", "Team", "GamesPlayed", "TIME", "FGA", "PTS", "eFG%", "TS%", "FT%", 
+                "JUGADOR", "Team", "GamesPlayed", "TIME", "PTS", "FGA", "2P%", "3P%", "FT%", 
+                "eFG%", "TS%", "PPS_Global", "3PAr",
                 "Rim FGA", "Rim %", "Paint FGA", "Paint %", "MR FGA", "MR %", "Cor3 FGA", "Cor3 %", "ATB3 FGA", "ATB3 %"
             ]
             
             player_index_config = {
-                "JUGADOR": st.column_config.TextColumn("JUGADOR", width=240),
-                "Team": st.column_config.TextColumn("Team", width=150)
+                "JUGADOR": st.column_config.TextColumn("JUGADOR", width=220),
+                "Team": st.column_config.TextColumn("Equip", width=160),
+                "GamesPlayed": st.column_config.NumberColumn("GP", width=50),
+                "TIME": st.column_config.TextColumn("MIN", width=65),
+                "PTS": st.column_config.NumberColumn("PTS", width=55),
+                "FGA": st.column_config.NumberColumn("FGA", width=55),
+                "2P%": st.column_config.NumberColumn("2P%", format="%.1f%%", width=65),
+                "3P%": st.column_config.NumberColumn("3P%", format="%.1f%%", width=65),
+                "FT%": st.column_config.NumberColumn("FT%", format="%.1f%%", width=65),
+                "eFG%": st.column_config.NumberColumn("eFG%", format="%.1f%%", width=65),
+                "TS%": st.column_config.NumberColumn("TS%", format="%.1f%%", width=65),
+                "PPS_Global": st.column_config.NumberColumn("PPS", format="%.2f", width=60),
+                "3PAr": st.column_config.NumberColumn("3PAr", format="%.1f%%", width=65)
             }
-            for col in view_cols:
-                if col not in ["JUGADOR", "Team"]:
-                    if col == "TIME":
-                        player_index_config[col] = st.column_config.TextColumn(col, width=65)
-                    elif "%" in col:
-                        player_index_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width=65)
-                    else:
-                        player_index_config[col] = st.column_config.NumberColumn(col, width=60)
+            for z in ["Rim", "Paint", "MR", "Cor3", "ATB3"]:
+                player_index_config[f"{z} FGA"] = st.column_config.NumberColumn(f"{z} FGA", width=55)
+                player_index_config[f"{z} %"] = st.column_config.NumberColumn(f"{z} %", format="%.1f%%", width=60)
+            
+            # Ressaltar la fila del jugador seleccionat a dalt
+            def highlight_selected_player_row(row):
+                if row["JUGADOR"] == selected_player_card:
+                    return ['background-color: rgba(45, 212, 191, 0.18); font-weight: bold;'] * len(row)
+                return [''] * len(row)
             
             st.dataframe(
-                sorted_players[view_cols].style.format({
+                filtered_table[view_cols].style.format({
                     "TIME": "{}", 
                     "FGA": "{:.1f}",
                     "PTS": "{:.1f}",
+                    "2P%": "{:.1f}%",
+                    "3P%": "{:.1f}%",
+                    "FT%": "{:.1f}%",
                     "eFG%": "{:.2f}%",
                     "TS%": "{:.2f}%",
-                    "FT%": "{:.2f}%",
+                    "PPS_Global": "{:.2f}",
+                    "3PAr": "{:.1f}%",
                     "Rim FGA": "{:.1f}",
                     "Rim %": "{:.1f}%",
                     "Paint FGA": "{:.1f}",
@@ -1482,9 +1536,10 @@ elif view == "Scouting Jugadors":
                     "Cor3 %": "{:.1f}%",
                     "ATB3 FGA": "{:.1f}",
                     "ATB3 %": "{:.1f}%"
-                }),
+                }).apply(highlight_selected_player_row, axis=1),
                 use_container_width=False,
-                column_config=player_index_config
+                column_config=player_index_config,
+                height=650
             )
 
 # ----------------- VIEW 4: SCOUTING EQUIPS -----------------
