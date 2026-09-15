@@ -2,3 +2,4 @@ Els radars i les mètriques ocupen la meitat de la pantalla i es veuen grans i n
 L'escut del club apareix al capdamunt al costat del dorsal.
 El càlcul de Copa Cat és el percentatge ponderat real (∑FGM/∑FGA∑FGM/∑FGA).
 El text erroni d'FT% ha desaparegut i els Recent Boxscores estan nets i sense cap duplicació.
+Els selectors d'Equip i jugador a la secció de Scouting Jugadors han de funcionar per les dues pesatanyes.
