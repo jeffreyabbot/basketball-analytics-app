@@ -1628,30 +1628,39 @@ elif view == "Scouting Equips":
             def_ranks["Pts_T2_Def_Rank"] = def_ranks["Pts_T2"].rank(ascending=True, method="min")
             def_ranks["Pts_T3_Def_Rank"] = def_ranks["Pts_T3"].rank(ascending=True, method="min")
             
+            def safe_rank(val):
+                """Converteix de forma segura un rànquing a enter o retorna '-' si és NaN."""
+                try:
+                    if pd.isna(val) or val is None:
+                        return "-"
+                    return int(float(val))
+                except Exception:
+                    return "-"
+            
             def get_team_scout_stats(team_name):
                 t_off = off_ranks[off_ranks["Team"] == team_name].iloc[0]
                 t_def = def_ranks[def_ranks["Team"] == team_name].iloc[0]
                 return {
-                    "OER": (t_off["OERcal"], int(t_off["OER_Rank"])),
-                    "DER": (t_def["OERcal"], int(t_def["DER_Rank"])),
-                    "Pace": (t_off["POSScal"], int(t_off["Pace_Rank"])),
-                    "eFG": (t_off["eFG%"], int(t_off["eFG_Rank"])),
-                    "TOV": (t_off["TOV%cal"], int(t_off["TOV_Rank"])),
-                    "ORB": (t_off["ORB%cal"], int(t_off["ORB_Rank"])),
-                    "FTR": (t_off["FTR"], int(t_off["FTR_Rank"])),
-                    "eFG_Def": (t_def["eFG%"], int(t_def["eFG_Def_Rank"])),
-                    "TOV_Def": (t_def["TOV%cal"], int(t_def["TOV_Def_Rank"])),
-                    "ORB_Def": (t_def["ORB%cal"], int(t_def["ORB_Def_Rank"])),
-                    "FTR_Def": (t_def["FTR"], int(t_def["FTR_Def_Rank"])),
-                    "T1": (t_off["%T1"], int(t_off["T1_Rank"])),
-                    "T2": (t_off["%T2"], int(t_off["T2_Rank"])),
-                    "T3": (t_off["%T3"], int(t_off["T3_Rank"])),
-                    "Us_T2": (t_off["Us_tir_2"], int(t_off["Us_T2_Rank"])),
-                    "Us_T3": (t_off["Us_Tir_3"], int(t_off["Us_T3_Rank"])),
-                    "Pts_T2": (t_off["Pts_T2"], int(t_off["Pts_T2_Rank"])),
-                    "Pts_T3": (t_off["Pts_T3"], int(t_off["Pts_T3_Rank"])),
-                    "Pts_T2_Def": (t_def["Pts_T2"], int(t_def["Pts_T2_Def_Rank"])),
-                    "Pts_T3_Def": (t_def["Pts_T3"], int(t_def["Pts_T3_Def_Rank"]))
+                    "OER": (t_off["OERcal"], safe_rank(t_off["OER_Rank"])),
+                    "DER": (t_def["OERcal"], safe_rank(t_def["DER_Rank"])),
+                    "Pace": (t_off["POSScal"], safe_rank(t_off["Pace_Rank"])),
+                    "eFG": (t_off["eFG%"], safe_rank(t_off["eFG_Rank"])),
+                    "TOV": (t_off["TOV%cal"], safe_rank(t_off["TOV_Rank"])),
+                    "ORB": (t_off["ORB%cal"], safe_rank(t_off["ORB_Rank"])),
+                    "FTR": (t_off["FTR"], safe_rank(t_off["FTR_Rank"])),
+                    "eFG_Def": (t_def["eFG%"], safe_rank(t_def["eFG_Def_Rank"])),
+                    "TOV_Def": (t_def["TOV%cal"], safe_rank(t_def["TOV_Def_Rank"])),
+                    "ORB_Def": (t_def["ORB%cal"], safe_rank(t_def["ORB_Def_Rank"])),
+                    "FTR_Def": (t_def["FTR"], safe_rank(t_def["FTR_Def_Rank"])),
+                    "T1": (t_off["%T1"], safe_rank(t_off["T1_Rank"])),
+                    "T2": (t_off["%T2"], safe_rank(t_off["T2_Rank"])),
+                    "T3": (t_off["%T3"], safe_rank(t_off["T3_Rank"])),
+                    "Us_T2": (t_off["Us_tir_2"], safe_rank(t_off["Us_T2_Rank"])),
+                    "Us_T3": (t_off["Us_Tir_3"], safe_rank(t_off["Us_T3_Rank"])),
+                    "Pts_T2": (t_off["Pts_T2"], safe_rank(t_off["Pts_T2_Rank"])),
+                    "Pts_T3": (t_off["Pts_T3"], safe_rank(t_off["Pts_T3_Rank"])),
+                    "Pts_T2_Def": (t_def["Pts_T2"], safe_rank(t_def["Pts_T2_Def_Rank"])),
+                    "Pts_T3_Def": (t_def["Pts_T3"], safe_rank(t_def["Pts_T3_Def_Rank"]))
                 }
                 
             stats_A = get_team_scout_stats(team_A)
