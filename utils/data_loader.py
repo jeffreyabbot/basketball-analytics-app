@@ -607,26 +607,27 @@ def clean_str_logo(name):
     return re.sub(r"[^a-zA-Z0-9]", "", s).lower()
 
 def get_team_logo_path(team_name, selected_season, raw_dir="data/raw"):
-    """Troba el fitxer de l'escut tolerant patrocinadors llargs, apòstrofs i accents."""
+    """Troba el fitxer de l'escut fent cerca recursiva (subcarpetes) i tolerant noms oficials."""
     if not team_name or pd.isna(team_name) or str(team_name).lower() in ["none", "nan", ""]:
         return None
 
-    # Directoris on buscar els escuts
-    possible_dirs = [
+    # Carpetes base on buscar
+    base_dirs = [
         Path("assets/logos"),
         Path("assets/escudos"),
         Path("assets"),
         Path(raw_dir) / str(selected_season) / "logos",
         Path(raw_dir) / "logos",
+        Path("data"),
     ]
 
-    t_clean = clean_str_logo(team_name)
+    t_raw = str(team_name).strip()
+    t_clean = clean_str_logo(t_raw)
 
-    # Mapeig de paraules clau per als equips amb patrocinador o noms oficials llargs
     KEYWORDS_MAP = {
         "argentona": ["argentona", "ibersofas"],
         "palamos": ["palamos", "canpaco"],
-        "gaudi": ["gaudi", "sardenya", "forus"],
+        "gaudi": ["gaudi", "sardenya", "forus", "uegaudi"],
         "bas": ["valldenbas", "vall", "bas"],
         "martinenc": ["martinenc"],
         "salt": ["salt", "ramonsoler"],
@@ -640,33 +641,42 @@ def get_team_logo_path(team_name, selected_season, raw_dir="data/raw"):
         "aese": ["aese"],
     }
 
-    # Determinem la clau de cerca de l'equip
     matched_key = None
     for key, aliases in KEYWORDS_MAP.items():
         if any(alias in t_clean for alias in aliases):
             matched_key = key
             break
 
-    # Busquem el fitxer d'imatge
-    for folder in possible_dirs:
+    # Cerca a fons (recursiva a totes les subcarpetes)
+    for folder in base_dirs:
         if not folder.exists():
             continue
             
-        for f in folder.iterdir():
-            if not f.is_file() or f.suffix.lower() not in [".png", ".jpg", ".jpeg", ".webp"]:
+        # rglob cerca a la carpeta i a qualsevol subcarpeta que contingui
+        for f in folder.rglob("*"):
+            if not f.is_file() or f.suffix.lower() not in [".png", ".jpg", ".jpeg", ".webp", ".svg"]:
                 continue
-            
+
+            # 1. COINCIDÈNCIA EXACTA DIRECTA (si el fitxer es diu tal qual l'equip)
+            if f.stem.strip().lower() == t_raw.lower():
+                return str(f).replace("\\", "/")
+
             f_clean = clean_str_logo(f.stem)
 
-            # 1. Coincidència per paraula clau de l'equip (ex: "argentona" en "argentona.png")
+            # 2. Coincidència neta directa
+            if f_clean == t_clean:
+                return str(f).replace("\\", "/")
+
+            # 3. Coincidència per paraula clau (ex: "gaudi" o "sardenya")
             if matched_key and (matched_key in f_clean or f_clean in matched_key):
                 return str(f).replace("\\", "/")
 
-            # 2. Coincidència directa de text
+            # 4. Coincidència parcial
             if f_clean and (f_clean in t_clean or t_clean in f_clean):
                 return str(f).replace("\\", "/")
 
     return None
+
 def get_team_logo_base64_url(team_name, selected_season):
     """
     Finds the team logo, reads it, encodes it, and returns a fully qualified
