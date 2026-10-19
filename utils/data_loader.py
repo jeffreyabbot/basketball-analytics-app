@@ -597,31 +597,75 @@ def load_all_raw_game_boxscores(boxscore_dir, pbp_dir, cache_key):
         return pd.DataFrame()
         
     return pd.concat(all_game_summaries, ignore_index=True)
+import unicodedata
+import re
+from pathlib import Path
+
+def clean_str_logo(name):
+    """Elimina accents, espais i caràcters especials."""
+    s = "".join(c for c in unicodedata.normalize("NFD", str(name)) if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-zA-Z0-9]", "", s).lower()
+
 def get_team_logo_path(team_name, selected_season, raw_dir="data/raw"):
-    """
-    Attempts to find a matching team logo image (.png, .jpg, .jpeg) case-insensitively.
-    Ignores spaces, underscores, and hyphens to guarantee matches.
-    """
-    logos_dir = resolve_path_case_insensitive(raw_dir, selected_season, "logos")
-    if not logos_dir or not os.path.exists(logos_dir):
+    """Troba el fitxer de l'escut tolerant patrocinadors llargs, apòstrofs i accents."""
+    if not team_name or pd.isna(team_name) or str(team_name).lower() in ["none", "nan", ""]:
         return None
-        
-    # canvi: Neteja estricta de caràcters especials en el nom cercat (ex: "BARICENTRO BARBERA" -> "baricentrobarbera")
-    clean_target = re.sub(r'[\s_\-]', '', str(team_name)).lower().strip()
-    
-    try:
-        entries = os.listdir(logos_dir)
-    except OSError:
-        return None
-        
-    for entry in entries:
-        entry_lower = entry.lower()
-        # Neteja de caràcters especials en el nom de l'arxiu real de GitHub
-        clean_entry = re.sub(r'[\s_\-]', '', entry_lower).replace(".png", "").replace(".jpg", "").replace(".jpeg", "")
-        
-        if clean_target in clean_entry and entry_lower.endswith((".png", ".jpg", ".jpeg")):
-            return os.path.join(logos_dir, entry)
+
+    # Directoris on buscar els escuts
+    possible_dirs = [
+        Path("assets/logos"),
+        Path("assets/escudos"),
+        Path("assets"),
+        Path(raw_dir) / str(selected_season) / "logos",
+        Path(raw_dir) / "logos",
+    ]
+
+    t_clean = clean_str_logo(team_name)
+
+    # Mapeig de paraules clau per als equips amb patrocinador o noms oficials llargs
+    KEYWORDS_MAP = {
+        "argentona": ["argentona", "ibersofas"],
+        "palamos": ["palamos", "canpaco"],
+        "gaudi": ["gaudi", "sardenya", "forus"],
+        "bas": ["valldenbas", "vall", "bas"],
+        "martinenc": ["martinenc"],
+        "salt": ["salt", "ramonsoler"],
+        "masnou": ["masnou"],
+        "claret": ["claret"],
+        "prat": ["prat"],
+        "santjordi": ["santjordi"],
+        "adepaf": ["adepaf"],
+        "aecam": ["aecam", "canxam"],
+        "castellet": ["castellet", "arimany"],
+        "aese": ["aese"],
+    }
+
+    # Determinem la clau de cerca de l'equip
+    matched_key = None
+    for key, aliases in KEYWORDS_MAP.items():
+        if any(alias in t_clean for alias in aliases):
+            matched_key = key
+            break
+
+    # Busquem el fitxer d'imatge
+    for folder in possible_dirs:
+        if not folder.exists():
+            continue
             
+        for f in folder.iterdir():
+            if not f.is_file() or f.suffix.lower() not in [".png", ".jpg", ".jpeg", ".webp"]:
+                continue
+            
+            f_clean = clean_str_logo(f.stem)
+
+            # 1. Coincidència per paraula clau de l'equip (ex: "argentona" en "argentona.png")
+            if matched_key and (matched_key in f_clean or f_clean in matched_key):
+                return str(f).replace("\\", "/")
+
+            # 2. Coincidència directa de text
+            if f_clean and (f_clean in t_clean or t_clean in f_clean):
+                return str(f).replace("\\", "/")
+
     return None
 def get_team_logo_base64_url(team_name, selected_season):
     """
