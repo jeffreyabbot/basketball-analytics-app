@@ -654,7 +654,7 @@ def get_team_logo_path(team_name, selected_season, raw_dir="data/raw"):
             
         # rglob cerca a la carpeta i a qualsevol subcarpeta que contingui
         for f in folder.rglob("*"):
-            if not f.is_file() or f.suffix.lower() not in [".png", ".jpg", ".jpeg", ".webp", ".svg"]:
+            if not f.is_file() or f.suffix.lower() not in [".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif"]:
                 continue
 
             # 1. COINCIDÈNCIA EXACTA DIRECTA (si el fitxer es diu tal qual l'equip)
