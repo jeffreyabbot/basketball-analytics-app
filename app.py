@@ -1776,8 +1776,55 @@ elif view == "Scouting Equips":
             st.subheader("Anàlisi Comparatiu per Jugador (Volum i PPS per Trams)")
             
             def calculate_player_splits_scout(team_name):
+                # 1. Intentem cerca exacta
                 df_players = master_players[master_players["Team"] == team_name].copy()
                 
+                # 2. Si no troba jugadors, cerca flexible tolerant a patrocinadors (com IBERSOFAS)
+                if df_players.empty and "Team" in master_players.columns:
+                    import unicodedata, re
+                    def clean_t(s):
+                        s_norm = "".join(c for c in unicodedata.normalize("NFD", str(s)) if unicodedata.category(c) != "Mn")
+                        return re.sub(r"[^a-zA-Z0-9]", "", s_norm).lower()
+
+                    t_target = clean_t(team_name)
+
+                    # Paraules clau per a equips amb patrocinador
+                    TEAM_KEYS = {
+                        "argentona": ["argentona", "ibersofas"],
+                        "palamos": ["palamos", "canpaco"],
+                        "gaudi": ["gaudi", "sardenya", "forus"],
+                        "bas": ["valldenbas", "vall", "bas"],
+                        "martinenc": ["martinenc"],
+                        "salt": ["salt", "ramonsoler"],
+                        "aecam": ["aecam", "canxam"],
+                        "castellet": ["castellet", "arimany"],
+                    }
+
+                    matched_aliases = None
+                    for k, aliases in TEAM_KEYS.items():
+                        if any(a in t_target for a in aliases):
+                            matched_aliases = aliases
+                            break
+
+                    def match_team_flexible(val):
+                        c = clean_t(val)
+                        if matched_aliases and any(a in c for a in matched_aliases):
+                            return True
+                        return c in t_target or t_target in c
+
+                    mask = master_players["Team"].apply(match_team_flexible)
+                    df_players = master_players[mask].copy()
+
+                if df_players.empty:
+                    # Retornem dataframe buit amb les columnes necessàries si realment no hi ha jugadors
+                    return pd.DataFrame(columns=["JUGADOR", "GamesPlayed", "FGA_2P", "PPS_2P", "FGA_3P", "PPS_3P"])
+
+                # Normalitzem el nom de la columna del jugador si vingués en minúscules o anglès
+                for col in ["JUGADOR", "Jugador", "Player", "Nom", "Name"]:
+                    if col in df_players.columns and col != "JUGADOR":
+                        df_players["JUGADOR"] = df_players[col]
+                        break
+
                 cols_to_parse = [
                     "Rim FGA", "Paint FGA", "MR FGA", "Rim FGM", "Paint FGM", "MR FGM", 
                     "Cor3 FGA", "ATB3 FGA", "Cor3 FGM", "ATB3 FGM", "GamesPlayed"
@@ -1785,54 +1832,22 @@ elif view == "Scouting Equips":
                 for c in cols_to_parse:
                     if c in df_players.columns:
                         df_players[c] = pd.to_numeric(df_players[c], errors='coerce').fillna(0.0)
+                    else:
+                        df_players[c] = 0.0
                         
                 df_players["FGA_2P"] = df_players["Rim FGA"] + df_players["Paint FGA"] + df_players["MR FGA"]
                 df_players["FGM_2P"] = df_players["Rim FGM"] + df_players["Paint FGM"] + df_players["MR FGM"]
-                df_players["PPS_2P"] = (2.0 * df_players["FGM_2P"]) / df_players["FGA_2P"]
+                df_players["PPS_2P"] = (2.0 * df_players["FGM_2P"]) / df_players["FGA_2P"].replace(0, np.nan)
                 df_players["PPS_2P"] = df_players["PPS_2P"].fillna(0.0)
                 
                 df_players["FGA_3P"] = df_players["Cor3 FGA"] + df_players["ATB3 FGA"]
                 df_players["FGM_3P"] = df_players["Cor3 FGM"] + df_players["ATB3 FGM"]
-                df_players["PPS_3P"] = (3.0 * df_players["FGM_3P"]) / df_players["FGA_3P"]
+                df_players["PPS_3P"] = (3.0 * df_players["FGM_3P"]) / df_players["FGA_3P"].replace(0, np.nan)
                 df_players["PPS_3P"] = df_players["PPS_3P"].fillna(0.0)
                 
                 scout_cols = ["JUGADOR", "GamesPlayed", "FGA_2P", "PPS_2P", "FGA_3P", "PPS_3P"]
-                return df_players[scout_cols].sort_values("FGA_2P", ascending=False)
-                
-            players_A_scout = calculate_player_splits_scout(team_A)
-            players_B_scout = calculate_player_splits_scout(team_B)
-            
-            scout_tab1, scout_tab2 = st.tabs([f"Jugadors - {team_A}", f"Jugadors - {team_B}"])
-            
-            scout_col_config = {
-                "JUGADOR": st.column_config.TextColumn("JUGADOR", width=260)
-            }
-            for col in players_A_scout.columns:
-                if col != "JUGADOR":
-                    scout_col_config[col] = st.column_config.NumberColumn(col, width=65)
-
-            scout_format = {
-                "FGA_2P": "{:.1f}",
-                "PPS_2P": "{:.2f}",
-                "FGA_3P": "{:.1f}",
-                "PPS_3P": "{:.2f}"
-            }
-            
-            with scout_tab1:
-                st.write(f"Volum de tirs i PPS per a llançaments de 2 i 3 punts de {team_A}")
-                st.dataframe(
-                    players_A_scout.style.format(scout_format), 
-                    use_container_width=False, 
-                    column_config=scout_col_config
-                )
-                
-            with scout_tab2:
-                st.write(f"Volum de tirs i PPS per a llançaments de 2 i 3 punts de {team_B}")
-                st.dataframe(
-                    players_B_scout.style.format(scout_format), 
-                    use_container_width=False, 
-                    column_config=scout_col_config
-                )
+                scout_cols_avail = [c for c in scout_cols if c in df_players.columns]
+                return df_players[scout_cols_avail].sort_values("FGA_2P", ascending=False)
                 
             st.markdown("---")
             st.subheader("Anàlisi Avançat de Quintets, Rotació i Parelles")
