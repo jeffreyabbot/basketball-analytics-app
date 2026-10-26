@@ -1772,59 +1772,52 @@ elif view == "Scouting Equips":
             with col_scout_rad2:
                 st.plotly_chart(fig_rad_B, use_container_width=True)
             
-            st.markdown("---")
-            st.subheader("Anàlisi Comparatiu per Jugador (Volum i PPS per Trams)")
-            
+            import unicodedata
+            import re
+
+            def clean_txt(s):
+                """Funció de neteja d'accents i espais visible per a tot el bloc."""
+                s_norm = "".join(c for c in unicodedata.normalize("NFD", str(s)) if unicodedata.category(c) != "Mn")
+                return re.sub(r"[^a-zA-Z0-9]", "", s_norm).lower().strip()
+
             def calculate_player_splits_scout(team_name):
-                # 1. Intentem cerca exacta
-                df_players = master_players[master_players["Team"] == team_name].copy()
+                if master_players is None or master_players.empty:
+                    return pd.DataFrame()
+
+                # Cerca de l'equip tolerant a patrocinadors (ex: Argentona / Ibersofas)
+                clean_target = clean_txt(team_name)
                 
-                # 2. Si no troba jugadors, cerca flexible tolerant a patrocinadors (com IBERSOFAS)
+                # 1. Filtre exacte
+                mask_exact = master_players["Team"].astype(str).str.strip().str.lower() == str(team_name).strip().lower()
+                df_players = master_players[mask_exact].copy()
+                
+                # 2. Filtre flexible si no troba res
                 if df_players.empty and "Team" in master_players.columns:
-                    import unicodedata, re
-                    def clean_t(s):
-                        s_norm = "".join(c for c in unicodedata.normalize("NFD", str(s)) if unicodedata.category(c) != "Mn")
-                        return re.sub(r"[^a-zA-Z0-9]", "", s_norm).lower()
-
-                    t_target = clean_t(team_name)
-
-                    # Paraules clau per a equips amb patrocinador
-                    TEAM_KEYS = {
-                        "argentona": ["argentona", "ibersofas"],
-                        "palamos": ["palamos", "canpaco"],
-                        "gaudi": ["gaudi", "sardenya", "forus"],
-                        "bas": ["valldenbas", "vall", "bas"],
-                        "martinenc": ["martinenc"],
-                        "salt": ["salt", "ramonsoler"],
-                        "aecam": ["aecam", "canxam"],
-                        "castellet": ["castellet", "arimany"],
-                    }
-
-                    matched_aliases = None
-                    for k, aliases in TEAM_KEYS.items():
-                        if any(a in t_target for a in aliases):
-                            matched_aliases = aliases
-                            break
-
                     def match_team_flexible(val):
-                        c = clean_t(val)
-                        if matched_aliases and any(a in c for a in matched_aliases):
+                        c = clean_txt(val)
+                        if not c:
+                            return False
+                        if c == clean_target or c in clean_target or clean_target in c:
                             return True
-                        return c in t_target or t_target in c
+                        for kw in ["argentona", "ibersofas", "palamos", "gaudi", "sardenya", "bas", "martinenc", "salt", "aecam", "castellet"]:
+                            if kw in clean_target and kw in c:
+                                return True
+                        return False
 
-                    mask = master_players["Team"].apply(match_team_flexible)
-                    df_players = master_players[mask].copy()
+                    mask_flex = master_players["Team"].apply(match_team_flexible)
+                    df_players = master_players[mask_flex].copy()
 
                 if df_players.empty:
-                    # Retornem dataframe buit amb les columnes necessàries si realment no hi ha jugadors
-                    return pd.DataFrame(columns=["JUGADOR", "GamesPlayed", "FGA_2P", "PPS_2P", "FGA_3P", "PPS_3P"])
+                    return pd.DataFrame()
 
-                # Normalitzem el nom de la columna del jugador si vingués en minúscules o anglès
+                # Normalitzem el nom de la columna del jugador
+                col_jugador = "JUGADOR"
                 for col in ["JUGADOR", "Jugador", "Player", "Nom", "Name"]:
-                    if col in df_players.columns and col != "JUGADOR":
-                        df_players["JUGADOR"] = df_players[col]
+                    if col in df_players.columns:
+                        col_jugador = col
                         break
-
+                df_players["JUGADOR"] = df_players[col_jugador]
+                
                 cols_to_parse = [
                     "Rim FGA", "Paint FGA", "MR FGA", "Rim FGM", "Paint FGM", "MR FGM", 
                     "Cor3 FGA", "ATB3 FGA", "Cor3 FGM", "ATB3 FGM", "GamesPlayed"
@@ -1835,19 +1828,20 @@ elif view == "Scouting Equips":
                     else:
                         df_players[c] = 0.0
                         
-                df_players["FGA_2P"] = df_players["Rim FGA"] + df_players["Paint FGA"] + df_players["MR FGA"]
-                df_players["FGM_2P"] = df_players["Rim FGM"] + df_players["Paint FGM"] + df_players["MR FGM"]
-                df_players["PPS_2P"] = (2.0 * df_players["FGM_2P"]) / df_players["FGA_2P"].replace(0, np.nan)
-                df_players["PPS_2P"] = df_players["PPS_2P"].fillna(0.0)
+                fga_2p = df_players["Rim FGA"] + df_players["Paint FGA"] + df_players["MR FGA"]
+                fgm_2p = df_players["Rim FGM"] + df_players["Paint FGM"] + df_players["MR FGM"]
+                df_players["FGA_2P"] = fga_2p
+                # Càlcul pur en Pandas (sense dependre de numpy/np)
+                df_players["PPS_2P"] = ((2.0 * fgm_2p) / fga_2p.replace(0, float("nan"))).fillna(0.0)
                 
-                df_players["FGA_3P"] = df_players["Cor3 FGA"] + df_players["ATB3 FGA"]
-                df_players["FGM_3P"] = df_players["Cor3 FGM"] + df_players["ATB3 FGM"]
-                df_players["PPS_3P"] = (3.0 * df_players["FGM_3P"]) / df_players["FGA_3P"].replace(0, np.nan)
-                df_players["PPS_3P"] = df_players["PPS_3P"].fillna(0.0)
+                fga_3p = df_players["Cor3 FGA"] + df_players["ATB3 FGA"]
+                fgm_3p = df_players["Cor3 FGM"] + df_players["ATB3 FGM"]
+                df_players["FGA_3P"] = fga_3p
+                df_players["PPS_3P"] = ((3.0 * fgm_3p) / fga_3p.replace(0, float("nan"))).fillna(0.0)
                 
                 scout_cols = ["JUGADOR", "GamesPlayed", "FGA_2P", "PPS_2P", "FGA_3P", "PPS_3P"]
                 scout_cols_avail = [c for c in scout_cols if c in df_players.columns]
-                return df_players[scout_cols_avail].sort_values("FGA_2P", ascending=False)
+                return df_players[scout_cols_avail].sort_values("FGA_2P", ascending=False).reset_index(drop=True)
                 
             st.markdown("---")
             st.subheader("Anàlisi Avançat de Quintets, Rotació i Parelles")
