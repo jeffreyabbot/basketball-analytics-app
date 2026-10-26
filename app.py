@@ -145,6 +145,25 @@ def clean_txt(s):
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
+def teams_match(a, b):
+    """Coincide si los nombres normalizados son iguales, si uno es el otro recortado
+    por el límite de 31 caracteres de las pestañas de Excel, o si comparten un
+    segmento completo (separados por / - |)."""
+    ca, cb = clean_txt(a), clean_txt(b)
+    if not ca or not cb:
+        return False
+    if ca == cb:
+        return True
+
+    short, long_ = (ca, cb) if len(ca) <= len(cb) else (cb, ca)
+    if len(short) >= 29 and long_.startswith(short):  # nombre truncado por Excel
+        return True
+
+    seg_a = {s.strip() for s in re.split(r"[/|\-–]", ca) if s.strip()}
+    seg_b = {s.strip() for s in re.split(r"[/|\-–]", cb) if s.strip()}
+    return bool(seg_a & seg_b)
+
+
 def clean_player_name_for_matching(name):
     """Normalitza noms traient dorsals i accents per garantir encreuaments exactes."""
     s = str(name).strip()
@@ -1696,27 +1715,9 @@ elif view == "Scouting Equips":
         if master_players is None or master_players.empty:
             return pd.DataFrame()
 
-        clean_target = clean_txt(team_name)
-
-        # 1. Filtre exacte
-        mask_exact = master_players["Team"].astype(str).str.strip().str.lower() == str(team_name).strip().lower()
-        df_players = master_players[mask_exact].copy()
-
-        # 2. Filtre flexible (tolerant a patrocinadors: Argentona / Ibersofas...)
-        if df_players.empty and "Team" in master_players.columns:
-            def match_team_flexible(val):
-                c = clean_txt(val)
-                if not c:
-                    return False
-                if c == clean_target or c in clean_target or clean_target in c:
-                    return True
-                for kw in ["argentona", "ibersofas", "palamos", "gaudi", "sardenya", "bas",
-                           "martinenc", "salt", "aecam", "castellet"]:
-                    if kw in clean_target and kw in c:
-                        return True
-                return False
-
-            df_players = master_players[master_players["Team"].apply(match_team_flexible)].copy()
+        df_players = master_players[
+            master_players["Team"].apply(lambda v: teams_match(v, team_name))
+        ].copy()
 
         if df_players.empty:
             return pd.DataFrame()
