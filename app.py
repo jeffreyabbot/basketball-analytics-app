@@ -34,7 +34,7 @@ from utils.court_visualizer import (
     draw_team_seasonal_zone_charts,
     draw_scouting_4f_radar_chart,
 )
-
+#Activar calibració empírica de 4 Factors (-7.1% Pèrdues · -3.5% Rebot Ofensiu)"#
 # Page config (ha de ser la primera crida de Streamlit)
 st.set_page_config(page_title="Anàlisi de Bàsquet - Staff", layout="wide")
 
@@ -913,6 +913,23 @@ elif view == "Acumulats Lliga":
     for col in offense_df.columns:
         if col not in ["Team", "Escut"]:
             league_col_config[col] = st.column_config.NumberColumn(col, width=65)
+
+    # --- COMMUTADOR DE CALIBRACIÓ EMPÍRICA (-7.1% TOV / -3.5% RO) ---
+    col_tog, _ = st.columns([2.5, 1.5])
+    with col_tog:
+        calibrar = st.toggle(
+            "⚖️ Activar calibració empírica de 4 Factors (-7.1% Pèrdues · -3.5% Rebot Ofensiu)",
+            value=False,
+            help="Aplica la correcció de biaix del model: TOV% real estimat ≈ TOV% - 7.1% | RO% real estimat ≈ RO% - 3.5%"
+        )
+
+    if calibrar:
+        for _df in [offense_df, defense_df]:
+            if "TOV%cal" in _df.columns:
+                _df["TOV%cal"] = (_df["TOV%cal"] - 7.1).clip(lower=0.0)
+            if "ORB%cal" in _df.columns:
+                _df["ORB%cal"] = (_df["ORB%cal"] - 3.5).clip(lower=0.0)
+    # -----------------------------------------------------------------
 
     tab_off, tab_def, tab_chart, tab_team_profile = st.tabs(
         ["Dades Equips", "Dades Rivals", "Gràfic de Dispersió", "Perfil de Tir de l'Equip"]
