@@ -628,7 +628,7 @@ def get_team_logo_path(team_name, selected_season, raw_dir="data/raw"):
         "argentona": ["argentona", "ibersofas"],
         "palamos": ["palamos", "canpaco"],
         "gaudi": ["gaudi", "sardenya", "forus", "uegaudi"],
-        "bas": ["valldenbas", "vall", "bas"],
+        "bas": ["valldenbas", "vall_den_bas", "vdb"],  # <-- Treiem "bas" i "vall" sols!
         "martinenc": ["martinenc"],
         "salt": ["salt", "ramonsoler"],
         "masnou": ["masnou"],

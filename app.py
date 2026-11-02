@@ -46,6 +46,14 @@ CB_NEUTRAL = "#4a4a4a"
 ZONES = ["Rim", "Paint", "MR", "Cor3", "ATB3"]
 LINEUP_PLAYER_COLS = ["P1", "P2", "P3", "P4", "P5"]
 
+# Diccionari global d'unificació d'equips
+TEAM_ALIASES = {
+    "CB VALL D'EN BAS": "CB VALL D'EN BAS 1",
+    "VALL D'EN BAS": "CB VALL D'EN BAS 1",
+    "Vall d'en Bas": "CB VALL D'EN BAS 1",
+    "Vall d'En Bas": "CB VALL D'EN BAS 1",
+}
+
 STYLE_GOOD = "background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;"
 STYLE_BAD = "background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;"
 
@@ -802,6 +810,11 @@ elif view == "Acumulats Lliga":
     if raw_games_df.empty:
         st.info("No s'han trobat dades de boxscores per calcular les tendències de la lliga.")
         st.stop()
+    TEAM_ALIASES = {
+        "CB VALL D'EN BAS": "CB VALL D'EN BAS 1",
+        "VALL D'EN BAS": "CB VALL D'EN BAS 1",
+        "Vall d'en Bas": "CB VALL D'EN BAS 1",
+    }
 
     st.subheader("Filtre dinàmic de partits de la lliga")
 
@@ -1042,7 +1055,10 @@ elif view == "Scouting Jugadors":
 
     offense_df, defense_df, master_players = parse_aggregate(AGG_FILE)
     master_players = master_players.copy()
-
+    # Unificar també a Scouting:
+    for _df in [offense_df, defense_df, master_players]:
+        if _df is not None and not _df.empty and "Team" in _df.columns:
+            _df["Team"] = _df["Team"].replace(TEAM_ALIASES)
     # Neteja de tipus
     ensure_numeric(master_players, ["PTS", "eFG%", "TS%", "FGA", "EFI", "USG%cal", "TO%cal", "FTR", "F+"])
     master_players["GamesPlayed"] = num_series(master_players, "GamesPlayed", 1.0)
@@ -1508,6 +1524,7 @@ elif view == "Scouting Equips":
         st.stop()
 
     offense_df, defense_df, master_players = parse_aggregate(AGG_FILE)
+    
 
     teams_list = sorted(list(offense_df["Team"].unique()))
     col_tA, col_tB = st.columns(2)
