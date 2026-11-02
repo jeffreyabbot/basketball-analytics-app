@@ -56,7 +56,41 @@ TEAM_ALIASES = {
 
 STYLE_GOOD = "background-color: rgba(214, 39, 40, 0.18); color: #d62728; font-weight: bold;"
 STYLE_BAD = "background-color: rgba(31, 119, 180, 0.18); color: #1f77b4; font-weight: bold;"
+# =====================================================================
+# CALIBRACIÓ EMPÍRICA GLOBAL
+# =====================================================================
+CALIB_POSS_FACTOR = 0.94   # Reducció del 6% de possessions (x0.94)
+CALIB_TOV_DIFF = 7.1       # Correcció biaix TOV% (-7.1%)
+CALIB_ORB_DIFF = 3.5       # Correcció biaix RO% (-3.5%)
 
+def apply_global_calibration(df):
+    """Aplica la calibració empírica a qualsevol DataFrame de l'aplicació."""
+    if df is None or df.empty or not st.session_state.get("global_calibration", False):
+        return df
+    
+    df = df.copy()
+    
+    # 1. Possessions (-6%)
+    for col in ["POSScal", "Pace", "Possessions", "POSS"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce") * CALIB_POSS_FACTOR
+
+    # 2. Ràtings d'eficiència (Recalculats a l'alça: Punts / (Poss * 0.94))
+    for col in ["OERcal", "OER", "DERcal", "DER"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce") / CALIB_POSS_FACTOR
+
+    # 3. Pèrdues (-7.1%)
+    for col in ["TOV%cal", "TOV%", "TO%", "TO%cal", "TOV_Def"]:
+        if col in df.columns:
+            df[col] = (pd.to_numeric(df[col], errors="coerce") - CALIB_TOV_DIFF).clip(lower=0.0)
+
+    # 4. Rebot Ofensiu (-3.5%)
+    for col in ["ORB%cal", "ORB%", "OREB%", "OREB%cal", "OR%", "ORB_Def"]:
+        if col in df.columns:
+            df[col] = (pd.to_numeric(df[col], errors="coerce") - CALIB_ORB_DIFF).clip(lower=0.0)
+
+    return df
 
 # =====================================================================
 # SEGURETAT
@@ -524,6 +558,15 @@ HAS_BOX = bool(BOX_DIR) and os.path.exists(BOX_DIR)
 HAS_PBP_DIR = bool(PBP_DIR) and os.path.exists(PBP_DIR)
 HAS_AGG = bool(AGG_FILE) and os.path.exists(AGG_FILE)
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("⚙️ Calibració de Model")
+st.session_state["global_calibration"] = st.sidebar.toggle(
+    "⚖️ Activar calibració empírica",
+    value=st.session_state.get("global_calibration", False),
+    help="Aplica la correcció a tota la web: -6% possessions, recalcul OER/DER (/0.94), -7.1% TOV% i -3.5% RO%."
+)
+st.sidebar.markdown("---")
+
 view = st.sidebar.radio(
     "Visualitzacions",
     ["Anàlisi Partits", "Acumulats Lliga", "Scouting Jugadors", "Scouting Equips"],
@@ -588,6 +631,10 @@ if view == "Anàlisi Partits":
     selected_game = st.selectbox("2. Selecciona el Partit", filtered_games, format_func=lambda g: g["name"])
 
     team_summary, (t1_name, t1_players), (t2_name, t2_players) = parse_boxscore(selected_game["path"])
+    
+    # --- CALIBRACIÓ PARTIT INDIVIDUAL ---
+    team_summary = apply_global_calibration(team_summary)
+    # ------------------------------------
 
     pbp_path = find_best_matching_pbp(t1_name, t2_name, PBP_DIR, selected_game["filename"])
     has_pbp = pbp_path is not None and os.path.exists(pbp_path)
@@ -900,11 +947,16 @@ elif view == "Acumulats Lliga":
             if fgm_c in df_t.columns and fga_c in df_t.columns:
                 df_t[pct_c] = safe_div(df_t[fgm_c], df_t[fga_c]) * 100.0
 
-    offense_df["Escut"] = offense_df["Team"].apply(lambda t: get_team_logo_base64_url(t, selected_season))
-    defense_df["Escut"] = defense_df["Team"].apply(lambda t: get_team_logo_base64_url(t, selected_season))
+    # --- CALIBRACIÓ ACUMULATS LLIGA ---
+        offense_df = apply_global_calibration(offense_df)
+        defense_df = apply_global_calibration(defense_df)
+        # -----------------------------------
 
-    view_off_cols = ["Escut"] + [c for c in offense_df.columns if c != "Escut"]
-    view_def_cols = ["Escut"] + [c for c in defense_df.columns if c != "Escut"]
+        offense_df["Escut"] = offense_df["Team"].apply(lambda t: get_team_logo_base64_url(t, selected_season))
+        defense_df["Escut"] = defense_df["Team"].apply(lambda t: get_team_logo_base64_url(t, selected_season))
+
+        view_off_cols = ["Escut"] + [c for c in offense_df.columns if c != "Escut"]
+        view_def_cols = ["Escut"] + [c for c in defense_df.columns if c != "Escut"]
 
     league_col_config = {
         "Escut": st.column_config.ImageColumn("Escut", width="small"),
@@ -1597,8 +1649,10 @@ elif view == "Scouting Equips":
     st.markdown("---")
     st.subheader("Comparativa de Rànquings i Eficiència de l'Equip")
 
-    off_ranks = offense_df.copy()
-    def_ranks = defense_df.copy()
+    # --- CALIBRACIÓ SCOUTING EQUIPS ---
+    off_ranks = apply_global_calibration(offense_df.copy())
+    def_ranks = apply_global_calibration(defense_df.copy())
+    # ----------------------------------
 
     for df_t in [off_ranks, def_ranks]:
         add_shooting_splits(df_t)
