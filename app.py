@@ -849,6 +849,16 @@ elif view == "Acumulats Lliga":
         st.warning("Selecciona almenys una jornada de lliga per calcular les tendències dinàmiques.")
         st.stop()
 
+    # --- UNIFICADOR ROBUST DE LA VALL D'EN BAS (tolera apòstrofs ' o ’, espais i variants) ---
+    def unify_team_name(t):
+        s = str(t).upper()
+        if "VALL" in s and "BAS" in s:
+            return "CB VALL D'EN BAS 1"
+        return str(t).strip()
+
+    raw_games_df["Team"] = raw_games_df["Team"].apply(unify_team_name)
+    # ----------------------------------------------------------------------------------------
+
     filtered_raw_off = raw_games_df[raw_games_df["Week"].isin(selected_weeks)].copy()
 
     # Construcció de les dades defensives (el que concedeix el rival en cada partit)
