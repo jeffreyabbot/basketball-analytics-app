@@ -966,35 +966,7 @@ elif view == "Acumulats Lliga":
         if col not in ["Team", "Escut"]:
             league_col_config[col] = st.column_config.NumberColumn(col, width=65)
 
-    # --- COMMUTADOR DE CALIBRACIÓ EMPÍRICA COMPLETA ---
-    col_tog, _ = st.columns([3, 1])
-    with col_tog:
-        calibrar = st.toggle(
-            "⚖️ Activar calibració empírica (-6% Possessions · Recalcular OER/DER · -7.1% TOV% · -3.5% RO%)",
-            value=False,
-            help="Aplica la correcció completa: redueix un 6% les possessions (x0.94), recalcula OER i DER a l'alça (/0.94) i corregeix el biaix de TOV% (-7.1%) i RO% (-3.5%)."
-        )
 
-    if calibrar:
-        factor_poss = 0.94  # Reducció del 6% de possessions
-
-        for _df in [offense_df, defense_df]:
-            # 1. Ajustar possessions (-6%)
-            if "POSScal" in _df.columns:
-                _df["POSScal"] = _df["POSScal"] * factor_poss
-
-            # 2. Recalcular OER i DER amb el nou volum de possessions
-            if "OERcal" in _df.columns:
-                _df["OERcal"] = _df["OERcal"] / factor_poss
-            if "DERcal" in _df.columns:
-                _df["DERcal"] = _df["DERcal"] / factor_poss
-
-            # 3. Corregir percentatges de 4 Factors
-            if "TOV%cal" in _df.columns:
-                _df["TOV%cal"] = (_df["TOV%cal"] - 7.1).clip(lower=0.0)
-            if "ORB%cal" in _df.columns:
-                _df["ORB%cal"] = (_df["ORB%cal"] - 3.5).clip(lower=0.0)
-    # --------------------------------------------------
 
     tab_off, tab_def, tab_chart, tab_team_profile = st.tabs(
         ["Dades Equips", "Dades Rivals", "Gràfic de Dispersió", "Perfil de Tir de l'Equip"]
