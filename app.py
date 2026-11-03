@@ -947,16 +947,15 @@ elif view == "Acumulats Lliga":
             if fgm_c in df_t.columns and fga_c in df_t.columns:
                 df_t[pct_c] = safe_div(df_t[fgm_c], df_t[fga_c]) * 100.0
 
-    # --- CALIBRACIÓ ACUMULATS LLIGA ---
-        offense_df = apply_global_calibration(offense_df)
-        defense_df = apply_global_calibration(defense_df)
-        # -----------------------------------
+    # BÉ: Té 4 espais (a la mateixa alçada del for), s'executa només 1 cop
+    offense_df = apply_global_calibration(offense_df)
+    defense_df = apply_global_calibration(defense_df)
 
-        offense_df["Escut"] = offense_df["Team"].apply(lambda t: get_team_logo_base64_url(t, selected_season))
-        defense_df["Escut"] = defense_df["Team"].apply(lambda t: get_team_logo_base64_url(t, selected_season))
+    offense_df["Escut"] = offense_df["Team"].apply(lambda t: get_team_logo_base64_url(t, selected_season))
+    defense_df["Escut"] = defense_df["Team"].apply(lambda t: get_team_logo_base64_url(t, selected_season))
 
-        view_off_cols = ["Escut"] + [c for c in offense_df.columns if c != "Escut"]
-        view_def_cols = ["Escut"] + [c for c in defense_df.columns if c != "Escut"]
+    view_off_cols = ["Escut"] + [c for c in offense_df.columns if c != "Escut"]
+    view_def_cols = ["Escut"] + [c for c in defense_df.columns if c != "Escut"]
 
     league_col_config = {
         "Escut": st.column_config.ImageColumn("Escut", width="small"),
