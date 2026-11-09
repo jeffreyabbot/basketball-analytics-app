@@ -1625,16 +1625,57 @@ elif view == "Scouting Equips":
     def_ranks = apply_global_calibration(defense_df.copy())
     # ----------------------------------
 
+    def extract_ft_pct(df_target, players_master=None):
+        """Troba o calcula el % de Tirs Lliures de forma automàtica."""
+        # 1. Cerca per qualsevol nom de columna habitual
+        col_clean_map = {str(c).strip().lower(): c for c in df_target.columns}
+        candidates = ["ft%", "ft %", "ft_pct", "%t1", "t1%", "t1 %", "%tl", "tl%", "tl %", "1p%", "ftpct"]
+        
+        for cand in candidates:
+            if cand in col_clean_map:
+                s = pd.to_numeric(df_target[col_clean_map[cand]], errors="coerce")
+                if s.notna().any():
+                    # Si venia en format 0.72 en lloc de 72.0%, multipliquem per 100
+                    if s.dropna().max() <= 1.0:
+                        s = s * 100.0
+                    return s
+
+        # 2. Si no hi ha columna de %, calculem FTM / FTA * 100
+        ftm_cand = ["ftm", "ft m", "ft_m", "t1m", "t1 m", "tlm", "tl m", "1pm"]
+        fta_cand = ["fta", "ft a", "ft_a", "t1a", "t1 a", "tla", "tl a", "1pa"]
+        
+        col_ftm = next((col_clean_map[c] for c in ftm_cand if c in col_clean_map), None)
+        col_fta = next((col_clean_map[c] for c in fta_cand if c in col_clean_map), None)
+        
+        if col_ftm and col_fta:
+            ftm_s = pd.to_numeric(df_target[col_ftm], errors="coerce").fillna(0.0)
+            fta_s = pd.to_numeric(df_target[col_fta], errors="coerce").fillna(0.0)
+            return (ftm_s / fta_s.replace(0, np.nan) * 100.0).fillna(0.0)
+
+        # 3. Rescat des de master_players sumant els tirs lliures dels jugadors de cada equip
+        if players_master is not None and not players_master.empty and "Team" in players_master.columns:
+            pm_cols = {str(c).strip().lower(): c for c in players_master.columns}
+            p_ftm = next((pm_cols[c] for c in ftm_cand if c in pm_cols), None)
+            p_fta = next((pm_cols[c] for c in fta_cand if c in pm_cols), None)
+            
+            if p_ftm and p_fta:
+                team_ft_series = []
+                for t_name in df_target["Team"]:
+                    t_players = players_master[players_master["Team"].apply(lambda v: teams_match(v, t_name))]
+                    tot_m = pd.to_numeric(t_players[p_ftm], errors="coerce").fillna(0.0).sum()
+                    tot_a = pd.to_numeric(t_players[p_fta], errors="coerce").fillna(0.0).sum()
+                    pct = (tot_m / tot_a * 100.0) if tot_a > 0 else 72.0
+                    team_ft_series.append(pct)
+                return pd.Series(team_ft_series, index=df_target.index)
+
+        # 4. Mitjana de referència si la categoria no té dades de tirs lliures
+        return pd.Series(72.0, index=df_target.index)
+
     for df_t in [off_ranks, def_ranks]:
         add_shooting_splits(df_t)
         df_t["%T2"] = df_t["2P%"]
         df_t["%T3"] = df_t["3P%"]
-        if "FT%" in df_t.columns:
-            df_t["%T1"] = pd.to_numeric(df_t["FT%"], errors="coerce")
-        elif "FT_Pct" in df_t.columns:
-            df_t["%T1"] = pd.to_numeric(df_t["FT_Pct"], errors="coerce")
-        else:
-            df_t["%T1"] = np.nan  # no s'inventen valors
+        df_t["%T1"] = extract_ft_pct(df_t, master_players)
         df_t["Us_tir_2"] = df_t["FGA_2P"]
         df_t["Us_Tir_3"] = df_t["FGA_3P"]
         df_t["Pts_T2"] = df_t["PPS_2P"]
