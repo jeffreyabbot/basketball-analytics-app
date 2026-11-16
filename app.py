@@ -1073,7 +1073,7 @@ elif view == "Acumulats Lliga":
         fig_scat.add_hline(y=mean_y, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Def")
         st.plotly_chart(fig_scat, use_container_width=True)
 
-with tab_team_profile:
+    with tab_team_profile:
         scout_teams = sorted(list(offense_df["Team"].unique()))
         selected_profile_team = st.selectbox("Selecciona l'Equip per analitzar el seu Perfil de Tir", scout_teams)
 
@@ -1142,55 +1142,6 @@ with tab_team_profile:
         ))
         fig_vol_def.update_layout(showlegend=True)
         # -------------------------------------------------
-
-        col_def1, col_def2 = st.columns(2)
-        with col_def1:
-            fig_vol_def.update_layout(title=f"Volum de Tirs Concedits de Mitjana - {selected_profile_team}")
-            st.plotly_chart(fig_vol_def, use_container_width=True)
-        with col_def2:
-            fig_pps_def.update_layout(title=f"Eficiència de Tir Concedida (PPS) - {selected_profile_team}")
-            st.plotly_chart(fig_pps_def, use_container_width=True)
-        scout_teams = sorted(list(offense_df["Team"].unique()))
-        selected_profile_team = st.selectbox("Selecciona l'Equip per analitzar el seu Perfil de Tir", scout_teams)
-
-        league_pps_val = calculate_league_average_pps(filtered_raw_off)
-
-        st.subheader("📊 Perfil de Tir Ofensiu (Atac)")
-        fig_vol_seasonal, fig_pps_seasonal = draw_team_seasonal_zone_charts(
-            offense_df, selected_profile_team, league_pps_val)
-        # --- AFEGEIX EL TALL DE LA MITJANA DE LLIGA A CADA BARRA DE VOLUM ---
-        # 1. Calculem la mitjana de la lliga de tirs per a cadascuna de les 5 zones:
-        league_zone_avg = [offense_df[f"{z} FGA"].mean() for z in ZONES]
-        x_zones = list(fig_vol_seasonal.data[0].x)  # Agafa les etiquetes exactes de les barres
-
-        # 2. Dibuixem el tall horitzontal a sobre de cada barra:
-        fig_vol_seasonal.add_trace(go.Scatter(
-            x=x_zones,
-            y=league_zone_avg,
-            mode="markers",
-            name="Mitjana Lliga",
-            marker=dict(
-                symbol="line-ew",
-                size=38,           # Amplada del tall horitzontal perquè creui tota la barra
-                line=dict(width=3.5, color=CB_ORANGE)  # Línia taronja visible i contrastada
-            ),
-            hovertemplate="<b>Mitjana Lliga</b>: %{y:.1f} tirs/p<extra></extra>"
-        ))
-        fig_vol_seasonal.update_layout(showlegend=True)
-        # --------------------------------------------------------------------
-        col_prof1, col_prof2 = st.columns(2)
-        with col_prof1:
-            st.plotly_chart(fig_vol_seasonal, use_container_width=True)
-        with col_prof2:
-            st.plotly_chart(fig_pps_seasonal, use_container_width=True)
-
-        st.markdown("---")
-        st.subheader("📊 Perfil de Tir Defensiu (Defensa - Permès als Rivals)")
-        st.write("Estudia quins llançaments concedeix aquest equip: els gràfics següents mostren el volum "
-                 "i l'eficiència (PPS) de tir dels rivals quan juguen contra ells.")
-
-        fig_vol_def, fig_pps_def = draw_team_seasonal_zone_charts(
-            defense_df, selected_profile_team, league_pps_val)
 
         col_def1, col_def2 = st.columns(2)
         with col_def1:
