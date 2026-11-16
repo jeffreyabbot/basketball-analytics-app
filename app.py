@@ -1082,7 +1082,26 @@ elif view == "Acumulats Lliga":
         st.subheader("📊 Perfil de Tir Ofensiu (Atac)")
         fig_vol_seasonal, fig_pps_seasonal = draw_team_seasonal_zone_charts(
             offense_df, selected_profile_team, league_pps_val)
+        # --- AFEGEIX EL TALL DE LA MITJANA DE LLIGA A CADA BARRA DE VOLUM ---
+        # 1. Calculem la mitjana de la lliga de tirs per a cadascuna de les 5 zones:
+        league_zone_avg = [offense_df[f"{z} FGA"].mean() for z in ZONES]
+        x_zones = list(fig_vol_seasonal.data[0].x)  # Agafa les etiquetes exactes de les barres
 
+        # 2. Dibuixem el tall horitzontal a sobre de cada barra:
+        fig_vol_seasonal.add_trace(go.Scatter(
+            x=x_zones,
+            y=league_zone_avg,
+            mode="markers",
+            name="Mitjana Lliga",
+            marker=dict(
+                symbol="line-ew",
+                size=38,           # Amplada del tall horitzontal perquè creui tota la barra
+                line=dict(width=3.5, color=CB_ORANGE)  # Línia taronja visible i contrastada
+            ),
+            hovertemplate="<b>Mitjana Lliga</b>: %{y:.1f} tirs/p<extra></extra>"
+        ))
+        fig_vol_seasonal.update_layout(showlegend=True)
+        # --------------------------------------------------------------------
         col_prof1, col_prof2 = st.columns(2)
         with col_prof1:
             st.plotly_chart(fig_vol_seasonal, use_container_width=True)
