@@ -1073,7 +1073,83 @@ elif view == "Acumulats Lliga":
         fig_scat.add_hline(y=mean_y, line_dash="dash", line_color=CB_ORANGE, annotation_text="Mitjana Def")
         st.plotly_chart(fig_scat, use_container_width=True)
 
-    with tab_team_profile:
+with tab_team_profile:
+        scout_teams = sorted(list(offense_df["Team"].unique()))
+        selected_profile_team = st.selectbox("Selecciona l'Equip per analitzar el seu Perfil de Tir", scout_teams)
+
+        league_pps_val = calculate_league_average_pps(filtered_raw_off)
+
+        # ==========================================
+        # 1. PERFIL DE TIR OFENSIU (ATAC)
+        # ==========================================
+        st.subheader("📊 Perfil de Tir Ofensiu (Atac)")
+        fig_vol_seasonal, fig_pps_seasonal = draw_team_seasonal_zone_charts(
+            offense_df, selected_profile_team, league_pps_val)
+
+        # --- TALL DE MITJANA DE LLIGA PER A L'ATAC ---
+        # Calculem la mitjana numèrica de cada zona (Eix X)
+        league_zone_avg_off = [offense_df[f"{z} FGA"].mean() for z in ZONES]
+        y_zones_off = list(fig_vol_seasonal.data[0].y)  # Les 5 zones exactes (Eix Y)
+
+        fig_vol_seasonal.add_trace(go.Scatter(
+            x=league_zone_avg_off,     # Els números van a l'eix X
+            y=y_zones_off,             # Les categories van a l'eix Y
+            mode="markers",
+            name="Mitjana Lliga",
+            marker=dict(
+                symbol="line-ns",      # Línia VERTICAL per tallar la barra horitzontal
+                size=32,               # Alçada del tall per creuar la barra neta
+                line=dict(width=3.5, color=CB_ORANGE)
+            ),
+            hovertemplate="<b>Mitjana Lliga</b>: %{x:.1f} tirs/p<extra></extra>"
+        ))
+        fig_vol_seasonal.update_layout(showlegend=True)
+        # ---------------------------------------------
+
+        col_prof1, col_prof2 = st.columns(2)
+        with col_prof1:
+            st.plotly_chart(fig_vol_seasonal, use_container_width=True)
+        with col_prof2:
+            st.plotly_chart(fig_pps_seasonal, use_container_width=True)
+
+        st.markdown("---")
+
+        # ==========================================
+        # 2. PERFIL DE TIR DEFENSIU (DEFENSA)
+        # ==========================================
+        st.subheader("📊 Perfil de Tir Defensiu (Defensa - Permès als Rivals)")
+        st.write("Estudia quins llançaments concedeix aquest equip: els gràfics següents mostren el volum "
+                 "i l'eficiència (PPS) de tir dels rivals quan juguen contra ells.")
+
+        fig_vol_def, fig_pps_def = draw_team_seasonal_zone_charts(
+            defense_df, selected_profile_team, league_pps_val)
+
+        # --- TALL DE MITJANA DE LLIGA PER A LA DEFENSA ---
+        league_zone_avg_def = [defense_df[f"{z} FGA"].mean() for z in ZONES]
+        y_zones_def = list(fig_vol_def.data[0].y)
+
+        fig_vol_def.add_trace(go.Scatter(
+            x=league_zone_avg_def,
+            y=y_zones_def,
+            mode="markers",
+            name="Mitjana Lliga (Concedida)",
+            marker=dict(
+                symbol="line-ns",      # Línia VERTICAL
+                size=32,
+                line=dict(width=3.5, color=CB_ORANGE)
+            ),
+            hovertemplate="<b>Mitjana Lliga Concedida</b>: %{x:.1f} tirs/p<extra></extra>"
+        ))
+        fig_vol_def.update_layout(showlegend=True)
+        # -------------------------------------------------
+
+        col_def1, col_def2 = st.columns(2)
+        with col_def1:
+            fig_vol_def.update_layout(title=f"Volum de Tirs Concedits de Mitjana - {selected_profile_team}")
+            st.plotly_chart(fig_vol_def, use_container_width=True)
+        with col_def2:
+            fig_pps_def.update_layout(title=f"Eficiència de Tir Concedida (PPS) - {selected_profile_team}")
+            st.plotly_chart(fig_pps_def, use_container_width=True)
         scout_teams = sorted(list(offense_df["Team"].unique()))
         selected_profile_team = st.selectbox("Selecciona l'Equip per analitzar el seu Perfil de Tir", scout_teams)
 
